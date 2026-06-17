@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Lounge Scanner</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0e1a;
+  --card:rgba(255,255,255,0.05);
+  --border:rgba(255,255,255,0.1);
+  --accent:#00e5c0;
+  --accent2:#7c6ff7;
+  --red:#ff4d6d;
+  --amber:#ffb830;
+  --green:#00e5c0;
+  --text:#e8eaf6;
+  --muted:rgba(232,234,246,0.5);
+}
+body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;
+  background-image:radial-gradient(ellipse at 20% 20%,rgba(124,111,247,0.15) 0%,transparent 60%),
+                   radial-gradient(ellipse at 80% 80%,rgba(0,229,192,0.1) 0%,transparent 60%);
+}
+.app{max-width:480px;margin:0 auto;padding:16px;padding-bottom:40px}
+
+/* Header */
+.header{text-align:center;padding:24px 0 20px}
+.header .logo{font-size:28px;font-weight:700;letter-spacing:-0.5px}
+.header .logo span{color:var(--accent)}
+.header p{color:var(--muted);font-size:14px;margin-top:4px}
+
+/* Card */
+.card{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:20px;margin-bottom:16px;backdrop-filter:blur(10px)}
+.card-title{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:14px}
+
+/* Scanner */
+#qr-reader{width:100%;border-radius:12px;overflow:hidden;background:#000}
+#qr-reader video{border-radius:12px}
+.scan-toggle{display:flex;gap:8px;margin-bottom:14px}
+.tab-btn{flex:1;padding:10px;border:1px solid var(--border);background:transparent;color:var(--muted);border-radius:10px;font-family:'Outfit',sans-serif;font-size:13px;font-weight:500;cursor:pointer;transition:all .2s}
+.tab-btn.active{background:rgba(0,229,192,0.15);border-color:var(--accent);color:var(--accent)}
+
+/* Textarea */
+textarea{width:100%;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:12px;color:var(--text);font-family:'Outfit',sans-serif;font-size:13px;padding:12px;resize:vertical;min-height:80px;outline:none;transition:border .2s}
+textarea:focus{border-color:var(--accent)}
+textarea::placeholder{color:var(--muted)}
+label{font-size:13px;font-weight:500;color:var(--muted);display:block;margin-bottom:6px;margin-top:12px}
+input[type=text]{width:100%;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:10px;color:var(--text);font-family:'Outfit',sans-serif;font-size:14px;padding:10px 14px;outline:none;transition:border .2s}
+input[type=text]:focus{border-color:var(--accent)}
+input[type=text]::placeholder{color:var(--muted)}
+
+/* Buttons */
+.btn{width:100%;padding:14px;border:none;border-radius:12px;font-family:'Outfit',sans-serif;font-size:15px;font-weight:600;cursor:pointer;transition:all .2s;letter-spacing:0.3px;margin-top:14px}
+.btn-validate{background:linear-gradient(135deg,var(--accent2),var(--accent));color:#0a0e1a}
+.btn-validate:hover{opacity:0.9;transform:translateY(-1px)}
+.btn-redeem{background:linear-gradient(135deg,#ff416c,#ff4b2b);color:#fff}
+.btn-redeem:hover{opacity:0.9;transform:translateY(-1px)}
+.btn:disabled{opacity:0.4;cursor:not-allowed;transform:none}
+.btn-secondary{background:rgba(255,255,255,0.06);color:var(--text);border:1px solid var(--border)}
+.btn-secondary:hover{background:rgba(255,255,255,0.1)}
+
+/* Status badge */
+.status-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase}
+.badge-valid{background:rgba(0,229,192,0.15);color:var(--green);border:1px solid rgba(0,229,192,0.3)}
+.badge-invalid{background:rgba(255,77,109,0.15);color:var(--red);border:1px solid rgba(255,77,109,0.3)}
+.badge-redeemed{background:rgba(255,184,48,0.15);color:var(--amber);border:1px solid rgba(255,184,48,0.3)}
+.badge-success{background:rgba(0,229,192,0.15);color:var(--green);border:1px solid rgba(0,229,192,0.3)}
+
+/* Detail rows */
+.detail-row{display:flex;justify-content:space-between;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border)}
+.detail-row:last-child{border-bottom:none}
+.detail-label{font-size:12px;color:var(--muted);font-weight:500}
+.detail-value{font-size:14px;font-weight:600;text-align:right;max-width:60%}
+
+/* Loader */
+.spinner{width:22px;height:22px;border:3px solid rgba(255,255,255,0.2);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;display:inline-block;vertical-align:middle;margin-right:8px}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* Hidden */
+.hidden{display:none}
+
+/* Error */
+.error-msg{background:rgba(255,77,109,0.1);border:1px solid rgba(255,77,109,0.3);border-radius:10px;padding:12px;font-size:13px;color:var(--red);margin-top:12px;word-break:break-all}
+
+/* Pulse */
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
+.scanning-label{text-align:center;color:var(--accent);font-size:13px;font-weight:500;margin-top:8px;animation:pulse 1.5s ease-in-out infinite}
+
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}
+.dot-green{background:var(--green)}
+.dot-red{background:var(--red)}
+.dot-amber{background:var(--amber)}
+
+.section-heading{font-size:16px;font-weight:700;margin-bottom:4px}
+.divider{height:1px;background:var(--border);margin:16px 0}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Header -->
+  <div class="header">
+    <div class="logo">🛂 Lounge<span>Scanner</span></div>
+    <p>Scan &amp; redeem lounge bookings</p>
+  </div>
+
+  <!-- STEP 1: Scan / Paste Token -->
+  <div class="card" id="step-scan">
+    <div class="card-title">Step 1 — Scan or Paste QR Token</div>
+    <div class="scan-toggle">
+      <button class="tab-btn active" id="tab-camera" onclick="switchTab('camera')">📷 Camera</button>
+      <button class="tab-btn" id="tab-paste" onclick="switchTab('paste')">📋 Paste Token</button>
+    </div>
+
+    <!-- Camera Mode -->
+    <div id="camera-section">
+      <div id="qr-reader"></div>
+      <p class="scanning-label" id="scan-status">Point camera at QR code…</p>
+      <button class="btn btn-secondary" style="margin-top:10px" onclick="stopCamera()">⏹ Stop Camera</button>
+    </div>
+
+    <!-- Paste Mode -->
+    <div id="paste-section" class="hidden">
+      <label for="token-input">Paste JWT token from QR code</label>
+      <textarea id="token-input" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."></textarea>
+      <label for="outlet-input">Outlet ID</label>
+      <input type="text" id="outlet-input" placeholder="3927da12-2b48-409d-ac9c-4de531c47fac"/>
+      <button class="btn btn-validate" id="validate-btn" onclick="validateToken()">Validate Booking</button>
+    </div>
+
+    <div id="scan-error" class="error-msg hidden"></div>
+  </div>
+
+  <!-- STEP 2: Validation Result -->
+  <div class="card hidden" id="step-result">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div class="card-title" style="margin-bottom:0">Booking Details</div>
+      <div id="valid-badge"></div>
+    </div>
+
+    <div id="booking-details"></div>
+
+    <div id="rejection-block" class="hidden">
+      <div class="divider"></div>
+      <div id="rejection-reason" class="error-msg" style="margin-top:0"></div>
+    </div>
+
+    <div id="redeem-block" class="hidden">
+      <div class="divider"></div>
+      <button class="btn btn-redeem" id="redeem-btn" onclick="redeemBooking()">
+        ✅ Confirm Entry — Redeem Booking
+      </button>
+    </div>
+
+    <button class="btn btn-secondary" style="margin-top:10px" onclick="resetAll()">🔄 Scan Another</button>
+  </div>
+
+  <!-- STEP 3: Redemption Result -->
+  <div class="card hidden" id="step-redeem">
+    <div class="card-title">Redemption</div>
+    <div id="redeem-result"></div>
+    <button class="btn btn-secondary" style="margin-top:14px" onclick="resetAll()">🔄 Scan Another</button>
+  </div>
+
+</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let html5Scanner = null;
+let scannerStarted = false;
+let currentValidation = null; // holds { bookingId, bookingItemId, outletId, token }
+
+// ── Tab switching ─────────────────────────────────────────────────────────
+function switchTab(tab) {
+  document.getElementById('tab-camera').classList.toggle('active', tab === 'camera');
+  document.getElementById('tab-paste').classList.toggle('active', tab === 'paste');
+  document.getElementById('camera-section').classList.toggle('hidden', tab !== 'camera');
+  document.getElementById('paste-section').classList.toggle('hidden', tab !== 'paste');
+  if (tab === 'camera') startCamera();
+  else stopCamera();
+}
+
+// ── Camera ─────────────────────────────────────────────────────────────────
+function startCamera() {
+  if (scannerStarted) return;
+  html5Scanner = new Html5Qrcode("qr-reader");
+  const config = { fps: 10, qrbox: { width: 240, height: 240 } };
+  html5Scanner.start(
+    { facingMode: "environment" },
+    config,
+    onQrScanned,
+    () => {}
+  ).then(() => {
+    scannerStarted = true;
+    document.getElementById('scan-status').textContent = 'Point camera at QR code…';
+  }).catch(err => {
+    showScanError('Camera error: ' + err + '. Use the Paste tab instead.');
+    switchTab('paste');
+  });
+}
+
+function stopCamera() {
+  if (html5Scanner && scannerStarted) {
+    html5Scanner.stop().catch(() => {});
+    scannerStarted = false;
+  }
+}
+
+async function onQrScanned(decodedText) {
+  stopCamera();
+  document.getElementById('scan-status').textContent = '✅ QR scanned!';
+  // The QR contains just the JWT token string
+  const token = decodedText.trim();
+  // We need outletId — decode JWT to get 'out' claim
+  let outletId = '';
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    outletId = payload.out || '';
+  } catch(e) {}
+  if (!outletId) {
+    switchTab('paste');
+    document.getElementById('token-input').value = token;
+    showScanError('Could not auto-detect outletId from QR. Please fill Outlet ID and click Validate.');
+    return;
+  }
+  await callValidate(token, outletId);
+}
+
+// ── Validate (paste mode) ─────────────────────────────────────────────────
+async function validateToken() {
+  const token = document.getElementById('token-input').value.trim();
+  const outletId = document.getElementById('outlet-input').value.trim();
+  hideScanError();
+  if (!token) return showScanError('Please paste a JWT token.');
+  if (!outletId) return showScanError('Please enter the Outlet ID.');
+  await callValidate(token, outletId);
+}
+
+// ── API: Validate ─────────────────────────────────────────────────────────
+async function callValidate(token, outletId) {
+  setValidateLoading(true);
+  try {
+    const res = await fetch('/api/validate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, outletId })
+    });
+    const json = await res.json();
+    showValidationResult(json, token, outletId);
+  } catch(e) {
+    showScanError('Network error: ' + e.message);
+  } finally {
+    setValidateLoading(false);
+  }
+}
+
+function setValidateLoading(loading) {
+  const btn = document.getElementById('validate-btn');
+  if (btn) btn.disabled = loading;
+  if (btn) btn.innerHTML = loading
+    ? '<span class="spinner"></span>Validating…'
+    : 'Validate Booking';
+}
+
+// ── Render Validation Result ───────────────────────────────────────────────
+function showValidationResult(json, token, outletId) {
+  const data = json.data || json;
+  const isValid = data.valid === true;
+  const isAlreadyRedeemed = data.rejectionReason === 'ALREADY_REDEEMED';
+
+  document.getElementById('step-scan').classList.add('hidden');
+  document.getElementById('step-result').classList.remove('hidden');
+
+  // Badge
+  let badgeHtml = '';
+  if (isValid) {
+    badgeHtml = '<span class="status-badge badge-valid"><span class="dot dot-green"></span>VALID</span>';
+  } else if (isAlreadyRedeemed) {
+    badgeHtml = '<span class="status-badge badge-redeemed"><span class="dot dot-amber"></span>ALREADY REDEEMED</span>';
+  } else {
+    badgeHtml = '<span class="status-badge badge-invalid"><span class="dot dot-red"></span>REJECTED</span>';
+  }
+  document.getElementById('valid-badge').innerHTML = badgeHtml;
+
+  // Details
+  let detailsHtml = '';
+  if (isValid || isAlreadyRedeemed) {
+    const bs = data.bookingSummary || {};
+    const ld = data.loungeDetails || {};
+    const rows = [
+      ['Booking Ref', data.bookingRef || '—'],
+      ['Passengers', data.passengerCount || '—'],
+      ['Lounge', ld.outletName || '—'],
+      ['Variant', ld.variantName || '—'],
+      ['Travel Date', bs.travelDate || '—'],
+      ['Journey', bs.journeyType || '—'],
+      ['Entry From', ld.startTime ? fmtTime(ld.startTime) : '—'],
+      ['Valid Until', ld.expiresAt ? fmtTime(ld.expiresAt) : '—'],
+      ['Status', bs.status || '—'],
+    ];
+    detailsHtml = rows.map(([k,v]) =>
+      `<div class="detail-row"><span class="detail-label">${k}</span><span class="detail-value">${v}</span></div>`
+    ).join('');
+    // Store for redeem
+    currentValidation = {
+      bookingId: data.bookingId,
+      bookingItemId: data.bookingItemId,
+      outletId: outletId,
+      token,
+    };
+  } else {
+    detailsHtml = '<div class="detail-row"><span class="detail-label">Booking Ref</span><span class="detail-value">—</span></div>';
+    currentValidation = null;
+  }
+  document.getElementById('booking-details').innerHTML = detailsHtml;
+
+  // Rejection reason
+  const rejBlock = document.getElementById('rejection-block');
+  if (!isValid) {
+    rejBlock.classList.remove('hidden');
+    document.getElementById('rejection-reason').textContent =
+      '⛔ ' + humanRejection(data.rejectionReason || 'Unknown error');
+  } else {
+    rejBlock.classList.add('hidden');
+  }
+
+  // Redeem button
+  const redeemBlock = document.getElementById('redeem-block');
+  if (isValid && currentValidation) {
+    redeemBlock.classList.remove('hidden');
+  } else {
+    redeemBlock.classList.add('hidden');
+  }
+}
+
+// ── API: Redeem ────────────────────────────────────────────────────────────
+async function redeemBooking() {
+  if (!currentValidation) return;
+  const btn = document.getElementById('redeem-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Redeeming…';
+
+  try {
+    const res = await fetch('/api/redeem', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        bookingId: currentValidation.bookingId,
+        bookingItemId: currentValidation.bookingItemId,
+        outletId: currentValidation.outletId,
+      })
+    });
+    const json = await res.json();
+    showRedeemResult(json);
+  } catch(e) {
+    btn.disabled = false;
+    btn.innerHTML = '✅ Confirm Entry — Redeem Booking';
+    alert('Network error: ' + e.message);
+  }
+}
+
+function showRedeemResult(json) {
+  const data = json.data || json;
+  document.getElementById('step-result').classList.add('hidden');
+  document.getElementById('step-redeem').classList.remove('hidden');
+
+  let html = '';
+  if (data.success) {
+    const already = data.alreadyRedeemed ? '<p style="color:var(--amber);font-size:13px;margin-top:8px">⚠️ Was already redeemed previously.</p>' : '';
+    html = `
+      <div style="text-align:center;padding:20px 0">
+        <div style="font-size:56px;margin-bottom:12px">✅</div>
+        <div class="section-heading">Entry Granted</div>
+        <p style="color:var(--muted);font-size:14px;margin-top:6px">Booking redeemed successfully</p>
+        ${already}
+        <div class="divider"></div>
+        <div class="detail-row"><span class="detail-label">Booking Item</span><span class="detail-value" style="font-size:12px">${data.bookingItemId || '—'}</span></div>
+        <div class="detail-row"><span class="detail-label">Redeemed At</span><span class="detail-value">${data.redeemedAt ? fmtTime(data.redeemedAt) : '—'}</span></div>
+      </div>`;
+  } else {
+    html = `
+      <div style="text-align:center;padding:20px 0">
+        <div style="font-size:56px;margin-bottom:12px">❌</div>
+        <div class="section-heading">Redemption Failed</div>
+        <div class="error-msg" style="margin-top:16px;text-align:left">⛔ ${humanRejection(data.error || 'Unknown error')}</div>
+      </div>`;
+  }
+  document.getElementById('redeem-result').innerHTML = html;
+}
+
+// ── Helpers ────────────────────────────────────────────────────────────────
+function resetAll() {
+  currentValidation = null;
+  document.getElementById('step-scan').classList.remove('hidden');
+  document.getElementById('step-result').classList.add('hidden');
+  document.getElementById('step-redeem').classList.add('hidden');
+  document.getElementById('token-input').value = '';
+  document.getElementById('outlet-input').value = '';
+  hideScanError();
+  switchTab('camera');
+}
+
+function showScanError(msg) {
+  const el = document.getElementById('scan-error');
+  el.textContent = msg;
+  el.classList.remove('hidden');
+}
+function hideScanError() {
+  document.getElementById('scan-error').classList.add('hidden');
+}
+
+function fmtTime(iso) {
+  try {
+    return new Date(iso).toLocaleString('en-IN', {
+      day:'2-digit', month:'short', year:'numeric',
+      hour:'2-digit', minute:'2-digit', hour12:true
+    });
+  } catch(e) { return iso; }
+}
+
+function humanRejection(code) {
+  const map = {
+    INVALID_TOKEN: 'Invalid or malformed QR token.',
+    BOOKING_NOT_FOUND: 'Booking not found in the system.',
+    TOKEN_NOT_RECOGNIZED: 'This QR token is not linked to any booking.',
+    NOT_CONFIRMED: 'Booking is not in a confirmed state.',
+    ALREADY_REDEEMED: 'This booking has already been redeemed.',
+    NOT_ACTIVE: 'Booking item is not currently active.',
+    TOKEN_EXPIRED: 'QR token has expired.',
+    OUTSIDE_WINDOW: 'Outside the valid redemption time window.',
+    OUTLET_MISMATCH: 'QR code is not valid for this lounge outlet.',
+    PAX_MISMATCH: 'Passenger count mismatch.',
+    TRAVEL_DATE_INVALID: 'Travel date does not match today.',
+    BOOKING_ITEM_NOT_FOUND: 'Booking item not found.',
+  };
+  return map[code] || code;
+}
+
+// ── Init ───────────────────────────────────────────────────────────────────
+window.addEventListener('load', () => {
+  // Check if token is pre-filled from QR scan URL param (e.g. ?token=...)
+  const params = new URLSearchParams(window.location.search);
+  const urlToken = params.get('token');
+  if (urlToken) {
+    let outletId = '';
+    try { outletId = JSON.parse(atob(urlToken.split('.')[1])).out || ''; } catch(e) {}
+    if (outletId) {
+      callValidate(urlToken, outletId);
+      return;
+    } else {
+      switchTab('paste');
+      document.getElementById('token-input').value = urlToken;
+      return;
+    }
+  }
+  startCamera();
+});
+</script>
+</body>
+</html>
