@@ -302,7 +302,7 @@ function showValidationResult(json, token, outletId) {
   if (isValid && canRedeemNow) {
     badgeHtml = '<span class="status-badge badge-valid"><span class="dot dot-green"></span>READY TO REDEEM</span>';
   } else if (isValid && !canRedeemNow) {
-    badgeHtml = '<span class="status-badge badge-scheduled"><span class="dot dot-amber"></span>VALID — NOT YET</span>';
+    badgeHtml = '<span class="status-badge badge-scheduled"><span class="dot dot-amber"></span>VALID</span>';
   } else if (isAlreadyRedeemed) {
     badgeHtml = '<span class="status-badge badge-redeemed"><span class="dot dot-amber"></span>ALREADY REDEEMED</span>';
   } else {
