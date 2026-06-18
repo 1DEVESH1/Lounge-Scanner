@@ -101,6 +101,18 @@ input[type=text]::placeholder{color:var(--muted)}
 
 .section-heading{font-size:16px;font-weight:700;margin-bottom:4px}
 .divider{height:1px;background:var(--border);margin:16px 0}
+
+/* Duration breakdown */
+.duration-block{background:rgba(0,229,192,0.08);border:1px solid rgba(0,229,192,0.22);border-radius:14px;padding:14px;margin-top:4px}
+.duration-title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--accent);margin-bottom:12px}
+.duration-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.duration-item{background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:10px;padding:10px 8px;text-align:center}
+.duration-item.total{background:rgba(124,111,247,0.15);border-color:rgba(124,111,247,0.35)}
+.duration-label{display:block;font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px}
+.duration-value{display:block;font-size:16px;font-weight:700;color:var(--text);line-height:1.2}
+.duration-sub{display:block;font-size:10px;color:var(--muted);margin-top:4px}
+.duration-timeline{margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.08)}
+.duration-timeline .detail-row{padding:6px 0}
 </style>
 </head>
 <body>
@@ -304,6 +316,7 @@ function showValidationResult(json, token, outletId) {
     const bs = data.bookingSummary || {};
     const ld = data.loungeDetails || {};
     const serviceStart = ld.serviceStartTime || ld.redeemableFrom || ld.startTime;
+    const serviceEnd = ld.serviceEndTime || ld.redeemableUntil || ld.expiresAt;
     const redeemUntil = ld.redeemableUntil || ld.expiresAt;
     const rows = [
       ['Booking Ref', data.bookingRef || '—'],
@@ -313,6 +326,7 @@ function showValidationResult(json, token, outletId) {
       ['Travel Date', bs.travelDate ? fmtDate(bs.travelDate) : '—'],
       ['Journey', bs.journeyType || '—'],
       ['Service Starts', serviceStart ? fmtTime(serviceStart) : '—'],
+      ['Service Ends', serviceEnd ? fmtTime(serviceEnd) : '—'],
       ['Redeemable From', ld.redeemableFrom ? fmtTime(ld.redeemableFrom) : (serviceStart ? fmtTime(serviceStart) : '—')],
       ['Redeemable Until', redeemUntil ? fmtTime(redeemUntil) : '—'],
       ['Redemption', redemptionStatusLabel(isValid, canRedeemNow, serviceStart)],
@@ -321,6 +335,7 @@ function showValidationResult(json, token, outletId) {
     detailsHtml = rows.map(([k,v]) =>
       `<div class="detail-row"><span class="detail-label">${k}</span><span class="detail-value">${v}</span></div>`
     ).join('');
+    detailsHtml += buildDurationBlock(ld);
     currentValidation = isValid && canRedeemNow ? {
       bookingId: data.bookingId,
       bookingItemId: data.bookingItemId,
@@ -468,13 +483,85 @@ function redemptionStatusLabel(isValid, canRedeemNow, redeemFromIso) {
   return '<span style="color:var(--amber)">Not yet</span>';
 }
 
+function formatDurationMinutes(minutes) {
+  const value = Number(minutes);
+  if (!Number.isFinite(value) || value <= 0) return '—';
+  if (value % 60 === 0) {
+    const hours = value / 60;
+    return hours === 1 ? '1 hour' : `${hours} hours`;
+  }
+  return `${value} min`;
+}
+
+function formatExtraHours(hours) {
+  const value = Number(hours);
+  if (!Number.isFinite(value) || value < 0) return '—';
+  if (value === 0) return 'None';
+  return value === 1 ? '1 hour' : `${value} hours`;
+}
+
+function buildDurationBlock(ld) {
+  const baseMinutes = ld.baseDurationMinutes;
+  const extraHours = ld.extraHours;
+  const totalMinutes = ld.totalDurationMinutes;
+  const hasDuration =
+    Number.isFinite(Number(baseMinutes)) ||
+    Number.isFinite(Number(extraHours)) ||
+    Number.isFinite(Number(totalMinutes)) ||
+    ld.bookedDurationLabel;
+
+  if (!hasDuration) return '';
+
+  const baseLabel = formatDurationMinutes(baseMinutes);
+  const extraLabel = formatExtraHours(extraHours);
+  const totalLabel = ld.bookedDurationLabel || formatDurationMinutes(totalMinutes);
+  const variantCode = ld.variantCode ? String(ld.variantCode).replace(/_/g, ' ') : '';
+  const serviceStart = ld.serviceStartTime || ld.redeemableFrom || ld.startTime;
+  const serviceEnd = ld.serviceEndTime || ld.redeemableUntil || ld.expiresAt;
+
+  return `
+    <div class="duration-block">
+      <div class="duration-title">Booked Lounge Duration</div>
+      <div class="duration-grid">
+        <div class="duration-item">
+          <span class="duration-label">Base pass</span>
+          <span class="duration-value">${baseLabel}</span>
+          ${variantCode ? `<span class="duration-sub">${variantCode}</span>` : ''}
+        </div>
+        <div class="duration-item">
+          <span class="duration-label">Extra</span>
+          <span class="duration-value">${extraLabel}</span>
+          <span class="duration-sub">beyond base</span>
+        </div>
+        <div class="duration-item total">
+          <span class="duration-label">Total</span>
+          <span class="duration-value">${totalLabel}</span>
+          <span class="duration-sub">booked stay</span>
+        </div>
+      </div>
+      <div class="duration-timeline">
+        <div class="detail-row">
+          <span class="detail-label">Entry</span>
+          <span class="detail-value">${serviceStart ? fmtTime(serviceStart) : '—'}</span>
+        </div>
+        <div class="detail-row">
+          <span class="detail-label">Must exit by</span>
+          <span class="detail-value">${serviceEnd ? fmtTime(serviceEnd) : '—'}</span>
+        </div>
+      </div>
+    </div>`;
+}
+
 function buildScheduledMessage(data, redeemFromIso) {
   const bs = data.bookingSummary || {};
   const ld = data.loungeDetails || {};
-  const redeemUntil = ld.redeemableUntil || ld.expiresAt;
+  const redeemUntil = ld.redeemableUntil || ld.expiresAt || ld.serviceEndTime;
   const travelDate = bs.travelDate ? fmtDate(bs.travelDate) : 'the travel date';
   const opensAt = redeemFromIso ? fmtTime(redeemFromIso) : 'the scheduled time';
   const closesAt = redeemUntil ? fmtTime(redeemUntil) : 'pass expiry';
+  const durationSummary = ld.bookedDurationLabel
+    ? `Total booked stay: <strong>${ld.bookedDurationLabel}</strong>`
+    : '';
 
   let reason = 'Redemption is not open yet.';
   const todayIst = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
@@ -487,6 +574,7 @@ function buildScheduledMessage(data, redeemFromIso) {
   return `
     <div class="info-title">Cannot redeem yet</div>
     <p>${reason}</p>
+    ${durationSummary ? `<p style="margin-top:8px">${durationSummary} (base ${formatDurationMinutes(ld.baseDurationMinutes)}, extra ${formatExtraHours(ld.extraHours)}).</p>` : ''}
     <p style="margin-top:8px">Guest may enter from <strong>${opensAt}</strong> until <strong>${closesAt}</strong>.</p>
     <p style="margin-top:8px;color:var(--muted)">QR is valid — confirm entry only during the redemption window.</p>`;
 }
