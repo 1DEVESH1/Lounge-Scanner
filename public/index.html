@@ -124,6 +124,12 @@ input[type=text]::placeholder{color:var(--muted)}
     <p>Scan &amp; redeem lounge bookings</p>
   </div>
 
+  <!-- Deep-link loading (phone camera opens ?token= URL) -->
+  <div class="card hidden" id="step-loading">
+    <div class="card-title">Loading Booking</div>
+    <p class="scanning-label" style="margin-top:0">Validating your lounge pass…</p>
+  </div>
+
   <!-- STEP 1: Scan / Paste Token -->
   <div class="card" id="step-scan">
     <div class="card-title">Step 1 — Scan or Paste QR Token</div>
@@ -195,6 +201,59 @@ let html5Scanner = null;
 let scannerStarted = false;
 let currentValidation = null; // holds { bookingId, bookingItemId, outletId, token }
 
+function extractTokenFromScan(text) {
+  const raw = String(text || "").trim();
+  if (!raw) return null;
+  if (raw.startsWith("eyJ")) return raw;
+  try {
+    const url = new URL(raw);
+    return url.searchParams.get("token");
+  } catch (e) {
+    return null;
+  }
+}
+
+function decodeOutletFromToken(token) {
+  try {
+    return JSON.parse(atob(String(token || "").split(".")[1])).out || "";
+  } catch (e) {
+    return "";
+  }
+}
+
+function showDeepLinkLoading() {
+  document.getElementById("step-loading").classList.remove("hidden");
+  document.getElementById("step-scan").classList.add("hidden");
+  document.getElementById("step-result").classList.add("hidden");
+  document.getElementById("step-redeem").classList.add("hidden");
+}
+
+function hideDeepLinkLoading() {
+  document.getElementById("step-loading").classList.add("hidden");
+}
+
+function stripTokenFromUrl() {
+  if (!window.location.search.includes("token=")) return;
+  history.replaceState({}, "", window.location.pathname || "/");
+}
+
+async function validateScannedContent(decodedText) {
+  const token = extractTokenFromScan(decodedText);
+  if (!token) {
+    showScanError("Could not read a lounge pass from that QR code.");
+    return;
+  }
+  const outletId = decodeOutletFromToken(token);
+  if (!outletId) {
+    switchTab("paste");
+    document.getElementById("token-input").value = token;
+    showScanError("Could not auto-detect outletId from QR. Please fill Outlet ID and click Validate.");
+    return;
+  }
+  stripTokenFromUrl();
+  await callValidate(token, outletId);
+}
+
 // ── Tab switching ─────────────────────────────────────────────────────────
 function switchTab(tab) {
   document.getElementById('tab-camera').classList.toggle('active', tab === 'camera');
@@ -233,22 +292,8 @@ function stopCamera() {
 
 async function onQrScanned(decodedText) {
   stopCamera();
-  document.getElementById('scan-status').textContent = '✅ QR scanned!';
-  // The QR contains just the JWT token string
-  const token = decodedText.trim();
-  // We need outletId — decode JWT to get 'out' claim
-  let outletId = '';
-  try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
-    outletId = payload.out || '';
-  } catch(e) {}
-  if (!outletId) {
-    switchTab('paste');
-    document.getElementById('token-input').value = token;
-    showScanError('Could not auto-detect outletId from QR. Please fill Outlet ID and click Validate.');
-    return;
-  }
-  await callValidate(token, outletId);
+  document.getElementById("scan-status").textContent = "✅ QR scanned!";
+  await validateScannedContent(decodedText);
 }
 
 // ── Validate (paste mode) ─────────────────────────────────────────────────
@@ -271,8 +316,11 @@ async function callValidate(token, outletId) {
       body: JSON.stringify({ token, outletId })
     });
     const json = await res.json();
+    hideDeepLinkLoading();
     showValidationResult(json, token, outletId);
   } catch(e) {
+    hideDeepLinkLoading();
+    document.getElementById("step-scan").classList.remove("hidden");
     showScanError('Network error: ' + e.message);
   } finally {
     setValidateLoading(false);
@@ -436,6 +484,7 @@ function showRedeemResult(json) {
 // ── Helpers ────────────────────────────────────────────────────────────────
 function resetAll() {
   currentValidation = null;
+  hideDeepLinkLoading();
   document.getElementById('step-scan').classList.remove('hidden');
   document.getElementById('step-result').classList.add('hidden');
   document.getElementById('step-redeem').classList.add('hidden');
@@ -599,20 +648,22 @@ function humanRejection(reason) {
 
 // ── Init ───────────────────────────────────────────────────────────────────
 window.addEventListener('load', () => {
-  // Check if token is pre-filled from QR scan URL param (e.g. ?token=...)
-  const params = new URLSearchParams(window.location.search);
-  const urlToken = params.get('token');
+  const urlToken =
+    extractTokenFromScan(window.location.href) ||
+    new URLSearchParams(window.location.search).get("token");
   if (urlToken) {
-    let outletId = '';
-    try { outletId = JSON.parse(atob(urlToken.split('.')[1])).out || ''; } catch(e) {}
+    showDeepLinkLoading();
+    const outletId = decodeOutletFromToken(urlToken);
     if (outletId) {
+      stripTokenFromUrl();
       callValidate(urlToken, outletId);
       return;
-    } else {
-      switchTab('paste');
-      document.getElementById('token-input').value = urlToken;
-      return;
     }
+    hideDeepLinkLoading();
+    switchTab('paste');
+    document.getElementById('token-input').value = urlToken;
+    stripTokenFromUrl();
+    return;
   }
   startCamera();
 });
