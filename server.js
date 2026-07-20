@@ -8,24 +8,121 @@ const path = require("path");
 
 const app = express();
 const PORT = process.env.PORT || 5020;
-const BOOKING_SERVICE_URL = (process.env.BOOKING_SERVICE_URL || "http://localhost:5010").replace(/\/$/, "");
+const BOOKING_SERVICE_URL = (
+  process.env.BOOKING_SERVICE_URL || "http://localhost:5010"
+).replace(/\/$/, "");
+const PROMOTIONAL_SERVICE_URL = (
+  process.env.PROMOTIONAL_SERVICE_URL || "http://localhost:5000"
+).replace(/\/$/, "");
+const CATALOGUE_SERVICE_URL = (
+  process.env.CATALOGUE_SERVICE_BASE_URL || "http://localhost:8088/api/v1/catalogue"
+).replace(/\/$/, "");
 const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || "";
 
-// ── Middleware ────────────────────────────────────────────────────────────────
 const PUBLIC_DIR = path.resolve(__dirname, "public");
 app.use(cors());
 app.use(express.json());
 app.use(express.static(PUBLIC_DIR));
 
-// ── Proxy: Validate ──────────────────────────────────────────────────────────
+const PROXY_TIMEOUT_MS = Number(process.env.PROXY_TIMEOUT_MS || 10000);
+
+async function proxyPost(baseUrl, pathSuffix, body, extraHeaders = {}) {
+  return axios.post(`${baseUrl}${pathSuffix}`, body, {
+    headers: {
+      "Content-Type": "application/json",
+      "X-Internal-Api-Key": INTERNAL_API_KEY,
+      ...extraHeaders,
+    },
+    timeout: PROXY_TIMEOUT_MS,
+    validateStatus: () => true,
+  });
+}
+
+async function proxyGet(baseUrl, pathSuffix) {
+  return axios.get(`${baseUrl}${pathSuffix}`, {
+    headers: {
+      "X-Internal-Api-Key": INTERNAL_API_KEY,
+    },
+    timeout: PROXY_TIMEOUT_MS,
+    validateStatus: () => true,
+  });
+}
+
+/** Catalogue pickers for scanner (no voucher code required). */
+app.get("/api/catalogue/locations", async (_req, res) => {
+  try {
+    const response = await proxyGet(CATALOGUE_SERVICE_URL, "/locations");
+    return res.status(response.status).json(response.data);
+  } catch (err) {
+    console.error("[catalogue/locations] proxy error:", err.message);
+    return res.status(502).json({
+      success: false,
+      error: "Catalogue service unreachable",
+      detail: err.message,
+    });
+  }
+});
+
+app.get("/api/catalogue/outlets", async (req, res) => {
+  const locationId = req.query.locationId;
+  const qs = locationId ? `?locationId=${encodeURIComponent(locationId)}` : "";
+  try {
+    const response = await proxyGet(CATALOGUE_SERVICE_URL, `/outlets${qs}`);
+    return res.status(response.status).json(response.data);
+  } catch (err) {
+    console.error("[catalogue/outlets] proxy error:", err.message);
+    return res.status(502).json({
+      success: false,
+      error: "Catalogue service unreachable",
+      detail: err.message,
+    });
+  }
+});
+
+app.get("/api/catalogue/outlets/:outletId/services", async (req, res) => {
+  try {
+    const response = await proxyGet(
+      CATALOGUE_SERVICE_URL,
+      `/outlets/${req.params.outletId}/services`
+    );
+    return res.status(response.status).json(response.data);
+  } catch (err) {
+    console.error("[catalogue/outlet-services] proxy error:", err.message);
+    return res.status(502).json({
+      success: false,
+      error: "Catalogue service unreachable",
+      detail: err.message,
+    });
+  }
+});
+
+app.get("/api/catalogue/services", async (req, res) => {
+  const locationId = req.query.locationId;
+  if (!locationId) {
+    return res.status(400).json({
+      success: false,
+      error: "locationId is required",
+    });
+  }
+  try {
+    const response = await proxyGet(
+      CATALOGUE_SERVICE_URL,
+      `/services?locationId=${encodeURIComponent(locationId)}`
+    );
+    return res.status(response.status).json(response.data);
+  } catch (err) {
+    console.error("[catalogue/services] proxy error:", err.message);
+    return res.status(502).json({
+      success: false,
+      error: "Catalogue service unreachable",
+      detail: err.message,
+    });
+  }
+});
+
 /**
- * POST /api/validate
- * Body: { token: "<scanned JWT>", outletId: "<uuid>" }
- *
- * Proxies to:
- *   POST <BOOKING_SERVICE_URL>/api/v1/booking/validate-booking
- *   Headers: X-Internal-Api-Key, X-Lounge-QR-Token: <token>
- *   Body:    { outletId }
+ * POST /api/validate — lounge booking QR
+ * Body: { token, outletId }
  */
 app.post("/api/validate", async (req, res) => {
   const { token, outletId } = req.body || {};
@@ -38,41 +135,36 @@ app.post("/api/validate", async (req, res) => {
   }
 
   try {
-    const response = await axios.post(
-      `${BOOKING_SERVICE_URL}/api/v1/booking/validate-booking`,
+    const response = await proxyPost(
+      BOOKING_SERVICE_URL,
+      "/api/v1/booking/validate-booking",
       { outletId },
-      {
-        headers: {
-          "Content-Type": "application/json",
-          "X-Internal-Api-Key": INTERNAL_API_KEY,
-          "X-Lounge-QR-Token": token,
-        },
-        // Don't throw on 4xx/5xx — pass the status through to the client
-        validateStatus: () => true,
-      }
+      { "X-Lounge-QR-Token": token }
     );
     return res.status(response.status).json(response.data);
   } catch (err) {
     console.error("[validate] proxy error:", err.message);
-    return res.status(502).json({ success: false, error: "Booking service unreachable", detail: err.message });
+    return res.status(502).json({
+      success: false,
+      error: "Booking service unreachable",
+      detail: err.message,
+    });
   }
 });
 
-// ── Proxy: Redeem ────────────────────────────────────────────────────────────
 /**
- * POST /api/redeem
+ * POST /api/redeem — lounge booking redeem
  * Body: { bookingId, bookingItemId, outletId, scannerId?, redeemedBy? }
- *
- * Proxies to:
- *   POST <BOOKING_SERVICE_URL>/api/v1/booking/redeem-booking
- *   Headers: X-Internal-Api-Key
- *   Body:    { bookingId, bookingItemId, outletId, scannerId?, redeemedBy? }
  */
 app.post("/api/redeem", async (req, res) => {
-  const { bookingId, bookingItemId, outletId, scannerId, redeemedBy } = req.body || {};
+  const { bookingId, bookingItemId, outletId, scannerId, redeemedBy } =
+    req.body || {};
 
   if (!bookingId || !bookingItemId || !outletId) {
-    return res.status(400).json({ success: false, error: "bookingId, bookingItemId and outletId are required" });
+    return res.status(400).json({
+      success: false,
+      error: "bookingId, bookingItemId and outletId are required",
+    });
   }
 
   const payload = { bookingId, bookingItemId, outletId };
@@ -80,34 +172,115 @@ app.post("/api/redeem", async (req, res) => {
   if (redeemedBy) payload.redeemedBy = redeemedBy;
 
   try {
-    const response = await axios.post(
-      `${BOOKING_SERVICE_URL}/api/v1/booking/redeem-booking`,
-      payload,
-      {
-        headers: {
-          "Content-Type": "application/json",
-          "X-Internal-Api-Key": INTERNAL_API_KEY,
-        },
-        validateStatus: () => true,
-      }
+    const response = await proxyPost(
+      BOOKING_SERVICE_URL,
+      "/api/v1/booking/redeem-booking",
+      payload
     );
     return res.status(response.status).json(response.data);
   } catch (err) {
     console.error("[redeem] proxy error:", err.message);
-    return res.status(502).json({ success: false, error: "Booking service unreachable", detail: err.message });
+    return res.status(502).json({
+      success: false,
+      error: "Booking service unreachable",
+      detail: err.message,
+    });
   }
 });
 
-// ── Fallback: serve SPA ──────────────────────────────────────────────────────
+/**
+ * POST /api/voucher/validate — Access Voucher QR / code
+ * Body: { qrToken } | { code }
+ */
+app.post("/api/voucher/validate", async (req, res) => {
+  const { qrToken, code, outletId, serviceLocationId, locationId } = req.body || {};
+  if (!qrToken && !code) {
+    return res
+      .status(400)
+      .json({ success: false, error: "qrToken or code is required" });
+  }
+
+  try {
+    const response = await proxyPost(
+      PROMOTIONAL_SERVICE_URL,
+      "/api/v1/internal/program-vouchers/validate",
+      {
+        ...(qrToken ? { qrToken } : { code }),
+        ...(outletId ? { outletId } : {}),
+        ...(serviceLocationId ? { serviceLocationId } : {}),
+        ...(locationId ? { locationId } : {}),
+      }
+    );
+    return res.status(response.status).json(response.data);
+  } catch (err) {
+    console.error("[voucher/validate] proxy error:", err.message);
+    return res.status(502).json({
+      success: false,
+      error: "Promotional service unreachable",
+      detail: err.message,
+    });
+  }
+});
+
+/**
+ * POST /api/voucher/redeem — Access Voucher redeem
+ * Body: { qrToken|code, serviceLocationId, outletId?, locationId?, paxAdmitted?, ... }
+ * Service redeem: locationId + serviceLocationId (no outletId)
+ * Outlet redeem: outletId + serviceLocationId
+ */
+app.post("/api/voucher/redeem", async (req, res) => {
+  const body = req.body || {};
+  if (!body.qrToken && !body.code) {
+    return res
+      .status(400)
+      .json({ success: false, error: "qrToken or code is required" });
+  }
+  if (!body.serviceLocationId) {
+    return res.status(400).json({
+      success: false,
+      error: "serviceLocationId is required",
+    });
+  }
+  if (!body.outletId && !body.locationId) {
+    return res.status(400).json({
+      success: false,
+      error: "outletId (outlet redeem) or locationId (service redeem) is required",
+    });
+  }
+
+  const payload = {
+    ...body,
+    redemptionChannel: body.redemptionChannel || "QR_SCAN_RP",
+    paxAdmitted: Number(body.paxAdmitted || 1),
+  };
+
+  try {
+    const response = await proxyPost(
+      PROMOTIONAL_SERVICE_URL,
+      "/api/v1/internal/program-vouchers/redeem",
+      payload
+    );
+    return res.status(response.status).json(response.data);
+  } catch (err) {
+    console.error("[voucher/redeem] proxy error:", err.message);
+    return res.status(502).json({
+      success: false,
+      error: "Promotional service unreachable",
+      detail: err.message,
+    });
+  }
+});
+
 app.get("*", (_req, res) => {
   res.sendFile(path.join(PUBLIC_DIR, "index.html"));
 });
 
-// ── Start ─────────────────────────────────────────────────────────────────────
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`\n🛂  TFS Lounge Scanner`);
   console.log(`   Local :  http://localhost:${PORT}`);
   console.log(`   Network: http://<your-ip>:${PORT}`);
-  console.log(`   Proxying to: ${BOOKING_SERVICE_URL}`);
+  console.log(`   Booking: ${BOOKING_SERVICE_URL}`);
+  console.log(`   Promotional: ${PROMOTIONAL_SERVICE_URL}`);
+  console.log(`   Catalogue:   ${CATALOGUE_SERVICE_URL}`);
   console.log(`   Serving static from: ${PUBLIC_DIR}\n`);
 });

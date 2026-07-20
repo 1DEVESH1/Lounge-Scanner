@@ -1,7 +1,7 @@
 {
   "name": "tfs-lounge-scanner",
   "version": "1.0.0",
-  "description": "Standalone Lounge QR Scanner & Redeemer UI — proxies securely to tfs-booking-service",
+  "description": "Standalone Lounge QR Scanner — proxies booking + access-voucher redeem to booking/promotional services",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
