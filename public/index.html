@@ -133,7 +133,7 @@ label{font-size:13px;font-weight:500;color:var(--muted);display:block;margin-bot
           <option value="">— Loading outlets… —</option>
         </select>
         <label for="of-service">Step 3 — Service</label>
-        <select id="of-service" onchange="updateVoucherRedeemButton()" disabled>
+        <select id="of-service" onchange="onVoucherInputsChange()" disabled>
           <option value="">— Select outlet—</option>
         </select>
       </div>
@@ -144,7 +144,7 @@ label{font-size:13px;font-weight:500;color:var(--muted);display:block;margin-bot
         <button type="button" class="tab-btn" id="tab-voucher-camera" onclick="switchVoucherInput('camera')">📷 Scan QR</button>
       </div>
       <div id="voucher-paste-section">
-        <textarea id="voucher-token-input" placeholder="Paste voucher code or QR token" oninput="updateVoucherRedeemButton()"></textarea>
+        <textarea id="voucher-token-input" placeholder="Paste voucher code or QR token" oninput="onVoucherInputsChange()"></textarea>
       </div>
       <div id="voucher-camera-section" class="hidden">
         <div id="voucher-qr-reader"></div>
@@ -155,11 +155,24 @@ label{font-size:13px;font-weight:500;color:var(--muted);display:block;margin-bot
       <label for="voucher-pax">Pax admitted</label>
       <input type="number" id="voucher-pax" min="1" value="1"/>
 
-      <button class="btn btn-redeem" id="voucher-redeem-btn" onclick="redeemVoucher()" disabled>
-        ✅ Redeem access voucher
+      <label for="voucher-billable">Billable amount (₹)</label>
+      <input type="number" id="voucher-billable" min="1" step="0.01" placeholder="Total bill amount" oninput="onVoucherInputsChange()"/>
+
+      <button class="btn btn-validate" id="voucher-preview-btn" onclick="previewVoucher()" disabled>
+        🔍 Check voucher &amp; preview
       </button>
+
+      <div id="voucher-preview-block" class="hidden" style="margin-top:14px">
+        <div id="voucher-preview-badge" style="margin-bottom:10px"></div>
+        <div id="voucher-preview-details"></div>
+        <div class="divider"></div>
+        <button class="btn btn-redeem" id="voucher-redeem-btn" onclick="redeemVoucher()" disabled>
+          ✅ Confirm redeem
+        </button>
+      </div>
+
       <p class="hint" id="voucher-redeem-hint">
-        Pehle location/outlet + service select karo. Phir voucher code paste karo ya QR scan karo, Redeem dabao.
+        Pehle location/outlet + service select karo. Phir voucher code + billable amount daalo, preview karo, phir redeem karo.
       </p>
     </div>
 
@@ -224,6 +237,7 @@ let scannerStarted = false;
 let voucherHtml5Scanner = null;
 let voucherScannerStarted = false;
 let currentValidation = null; // booking
+let currentVoucherPreview = null;
 let catalogueLoaded = false;
 const catalogueCache = {
   locations: [],
@@ -551,9 +565,9 @@ function updateVoucherRedeemHint() {
   const hint = document.getElementById("voucher-redeem-hint");
   const mode = document.getElementById("voucher-mode").value;
   if (mode === "SERVICE") {
-    hint.textContent = "Service flow: Location → Service → Code → Redeem (outlet nahi).";
+    hint.textContent = "Service flow: Location → Service → Code → Billable → Preview → Redeem.";
   } else {
-    hint.textContent = "Outlet flow: Outlet (with location) → Service → Code → Redeem.";
+    hint.textContent = "Outlet flow: Outlet → Service → Code → Billable → Preview → Redeem.";
   }
 }
 
@@ -577,14 +591,58 @@ function getVoucherSelections() {
   };
 }
 
-function updateVoucherRedeemButton() {
+function swapVoucherCredential(payload, cred) {
+  const next = { ...payload };
+  if (cred.asCode) {
+    delete next.code;
+    next.qrToken = cred.token;
+  } else {
+    delete next.qrToken;
+    next.code = cred.token;
+  }
+  return next;
+}
+
+function fmtMoney(n) {
+  if (n == null || Number.isNaN(Number(n))) return "—";
+  return "₹" + Number(n).toLocaleString("en-IN");
+}
+
+function redemptionTypeLabel(type) {
+  if (type === "FULL_REDEEM") return "Full redeem";
+  if (type === "DISCOUNTED_AMOUNT") return "Discounted amount";
+  return type || "—";
+}
+
+function clearVoucherPreview() {
+  currentVoucherPreview = null;
+  document.getElementById("voucher-preview-block").classList.add("hidden");
+  document.getElementById("voucher-preview-details").innerHTML = "";
+  document.getElementById("voucher-preview-badge").innerHTML = "";
+  const redeemBtn = document.getElementById("voucher-redeem-btn");
+  redeemBtn.disabled = true;
+  redeemBtn.innerHTML = "✅ Confirm redeem";
+}
+
+function onVoucherInputsChange() {
+  clearVoucherPreview();
+  updateVoucherPreviewButton();
+}
+
+function updateVoucherPreviewButton() {
   const { mode, locationId, outletId, serviceLocationId } = getVoucherSelections();
   const code = document.getElementById("voucher-token-input").value.trim();
+  const billable = Number(document.getElementById("voucher-billable").value || 0);
   const ready =
-    mode === "SERVICE"
+    billable > 0 &&
+    (mode === "SERVICE"
       ? Boolean(locationId && serviceLocationId && code)
-      : Boolean(outletId && serviceLocationId && code);
-  document.getElementById("voucher-redeem-btn").disabled = !ready;
+      : Boolean(outletId && serviceLocationId && code));
+  document.getElementById("voucher-preview-btn").disabled = !ready;
+}
+
+function updateVoucherRedeemButton() {
+  onVoucherInputsChange();
 }
 
 async function onVoucherLocationChange() {
@@ -611,7 +669,7 @@ async function onVoucherLocationChange() {
       serviceSel.appendChild(new Option(svc.displayName, svc.serviceLocationId));
     }
     serviceSel.disabled = false;
-    hint.textContent = "Service select karo, phir voucher code paste karke redeem karo.";
+    hint.textContent = "Service select karo, phir voucher code + billable amount daalo aur preview karo.";
   } catch (e) {
     showScanError("Location services load nahi ho paye: " + e.message);
   }
@@ -644,7 +702,7 @@ async function onVoucherOutletChange() {
       );
     }
     ofService.disabled = false;
-    hint.textContent = "Service select karo, phir voucher code paste karke redeem karo.";
+    hint.textContent = "Service select karo, phir voucher code + billable amount daalo aur preview karo.";
   } catch (e) {
     showScanError("Outlet services load nahi ho paye: " + e.message);
   }
@@ -816,12 +874,13 @@ async function redeemBooking() {
   }
 }
 
-async function redeemVoucher() {
+async function previewVoucher() {
   hideScanError();
+  clearVoucherPreview();
   const { mode, locationId, outletId, serviceLocationId } = getVoucherSelections();
   const rawCode = document.getElementById("voucher-token-input").value.trim();
   const cred = parseVoucherCredential(rawCode);
-  const paxAdmitted = Number(document.getElementById("voucher-pax").value || 1);
+  const billableAmount = Number(document.getElementById("voucher-billable").value || 0);
 
   if (mode === "SERVICE") {
     if (!locationId || !serviceLocationId) {
@@ -836,35 +895,150 @@ async function redeemVoucher() {
     showScanError("Valid voucher code ya QR token paste/scan karo.");
     return;
   }
+  if (!billableAmount || billableAmount <= 0) {
+    showScanError("Valid billable amount daalo.");
+    return;
+  }
 
-  const btn = document.getElementById("voucher-redeem-btn");
+  const btn = document.getElementById("voucher-preview-btn");
   btn.disabled = true;
-  btn.innerHTML = '<span class="spinner"></span>Redeeming…';
+  btn.innerHTML = '<span class="spinner"></span>Checking…';
 
   const basePayload = {
     serviceLocationId,
-    paxAdmitted,
-    redemptionChannel: "QR_SCAN_RP",
+    billableAmount,
+    ...(locationId ? { locationId } : {}),
+    ...(outletId ? { outletId } : {}),
   };
-  if (locationId) basePayload.locationId = locationId;
-  if (outletId) basePayload.outletId = outletId;
-
   const primary = cred.asCode
     ? { ...basePayload, code: cred.token }
     : { ...basePayload, qrToken: cred.token };
-  const fallback = cred.asCode
-    ? { ...basePayload, qrToken: cred.token }
-    : { ...basePayload, code: cred.token };
+  const fallback = swapVoucherCredential(basePayload, cred);
 
   try {
-    let res = await fetch("/api/voucher/redeem", {
+    let res = await fetch("/api/voucher/validate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(primary),
     });
     let json = await res.json();
 
-    // If lookup fails as code/token, retry the other identifier.
+    if (!res.ok && shouldRetryAlternateCredential(res.status, json)) {
+      res = await fetch("/api/voucher/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fallback),
+      });
+      json = await res.json();
+    }
+
+    if (!res.ok) {
+      showScanError(apiErrorMessage(json) || "Voucher check failed");
+      return;
+    }
+
+    const data = json.data || json;
+    if (!data.valid) {
+      showScanError("Voucher redeemable nahi hai (expired / used / invalid).");
+      return;
+    }
+    if (data.selectionValidation && data.selectionValidation.isSelectable === false) {
+      showScanError(data.selectionValidation.reason || "Selection not allowed for this voucher.");
+      return;
+    }
+    if (data.quoteError) {
+      showScanError(data.quoteError);
+      return;
+    }
+    if (!data.quote) {
+      showScanError("Quote generate nahi ho paya. Billable amount aur selection check karo.");
+      return;
+    }
+
+    currentVoucherPreview = {
+      cred,
+      payload: {
+        ...basePayload,
+        ...(cred.asCode ? { code: cred.token } : { qrToken: cred.token }),
+        paxAdmitted: Number(document.getElementById("voucher-pax").value || 1),
+        redemptionChannel: "QR_SCAN_RP",
+      },
+      data,
+    };
+    showVoucherPreview(data);
+  } catch (e) {
+    showScanError("Network error: " + e.message);
+  } finally {
+    btn.innerHTML = "🔍 Check voucher & preview";
+    updateVoucherPreviewButton();
+  }
+}
+
+function showVoucherPreview(data) {
+  const voucher = data.voucher || {};
+  const mapping = data.mapping || {};
+  const quote = data.quote || {};
+  const block = document.getElementById("voucher-preview-block");
+  const badge = document.getElementById("voucher-preview-badge");
+  const details = document.getElementById("voucher-preview-details");
+
+  badge.innerHTML =
+    '<span class="status-badge badge-valid"><span class="dot dot-green"></span>READY TO REDEEM</span>';
+
+  const rows = [
+    ["Voucher", voucher.code || "—"],
+    ["Passenger", voucher.passengerName || "—"],
+    ["Program", voucher.programTitle || voucher.programCode || "—"],
+    ["Restriction", voucher.restriction || "—"],
+    ["Usage", `${voucher.servicesRedeemedCount ?? 0} / ${voucher.servicesRedemptionCap ?? "—"}`],
+    ["Redemption type", redemptionTypeLabel(mapping.redemptionType || quote.redemptionType)],
+    ["Voucher value (cap)", fmtMoney(mapping.discountAmount ?? quote.voucherValue)],
+    ["Billable amount", fmtMoney(quote.billableAmount)],
+    ["Redeem value (voucher applies)", fmtMoney(quote.redeemValue)],
+    ["Customer pays", fmtMoney(quote.customerPayAmount)],
+  ];
+
+  details.innerHTML =
+    rows
+      .map(
+        ([k, v]) =>
+          `<div class="detail-row"><span class="detail-label">${k}</span><span class="detail-value">${v}</span></div>`
+      )
+      .join("") +
+    `<div class="info-banner" style="margin-top:12px">
+      <div class="info-title">Payment summary</div>
+      Bill ${fmtMoney(quote.billableAmount)} · Voucher covers ${fmtMoney(quote.redeemValue)} ·
+      Customer pays <strong>${fmtMoney(quote.customerPayAmount)}</strong>
+      ${quote.isFullRedeem ? "<br><span style='color:var(--muted)'>Full redeem — guest pays nothing; voucher value is recorded against the bill.</span>" : "<br><span style='color:var(--muted)'>Discounted amount — guest pays the remainder after voucher discount.</span>"}
+    </div>`;
+
+  block.classList.remove("hidden");
+  document.getElementById("voucher-redeem-btn").disabled = false;
+}
+
+async function redeemVoucher() {
+  hideScanError();
+  if (!currentVoucherPreview) {
+    showScanError("Pehle voucher preview karo.");
+    return;
+  }
+
+  const btn = document.getElementById("voucher-redeem-btn");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Redeeming…';
+
+  const payload = currentVoucherPreview.payload;
+  const cred = currentVoucherPreview.cred;
+  const fallback = swapVoucherCredential(payload, cred);
+
+  try {
+    let res = await fetch("/api/voucher/redeem", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    let json = await res.json();
+
     if (!res.ok && shouldRetryAlternateCredential(res.status, json)) {
       res = await fetch("/api/voucher/redeem", {
         method: "POST",
@@ -876,19 +1050,20 @@ async function redeemVoucher() {
 
     if (!res.ok) {
       btn.disabled = false;
-      btn.innerHTML = "✅ Redeem access voucher";
-      updateVoucherRedeemButton();
+      btn.innerHTML = "✅ Confirm redeem";
       showScanError(apiErrorMessage(json) || "Redeem failed");
       return;
     }
 
     const data = json.data || json;
     const voucher = data.voucher || {};
+    const quote = data.quote || {};
     const stillOpen =
       voucher.status === "PARTIALLY_USED" ||
       (Number(voucher.servicesRedeemedCount) < Number(voucher.servicesRedemptionCap));
 
     stopVoucherCamera();
+    clearVoucherPreview();
     document.getElementById("step-scan").classList.add("hidden");
     document.getElementById("step-redeem").classList.remove("hidden");
     document.getElementById("redeem-result").innerHTML = `
@@ -898,13 +1073,15 @@ async function redeemVoucher() {
         <p style="color:var(--muted);font-size:14px;margin-top:6px">${voucher.code || "Access voucher"} · ${voucher.status || ""}</p>
         <div class="divider"></div>
         <div class="detail-row"><span class="detail-label">Progress</span><span class="detail-value">${voucher.servicesRedeemedCount ?? "—"} / ${voucher.servicesRedemptionCap ?? "—"}</span></div>
-        <div class="detail-row"><span class="detail-label">Discount</span><span class="detail-value">${data.discountAmount != null ? "₹" + data.discountAmount : "—"}</span></div>
+        <div class="detail-row"><span class="detail-label">Billable</span><span class="detail-value">${fmtMoney(quote.billableAmount ?? data.billableAmount)}</span></div>
+        <div class="detail-row"><span class="detail-label">Redeem value</span><span class="detail-value">${fmtMoney(quote.redeemValue ?? data.redeemValue)}</span></div>
+        <div class="detail-row"><span class="detail-label">Customer paid</span><span class="detail-value">${fmtMoney(quote.customerPayAmount ?? data.customerPayAmount)}</span></div>
+        <div class="detail-row"><span class="detail-label">Type</span><span class="detail-value">${redemptionTypeLabel(data.redemptionType)}</span></div>
       </div>
       ${stillOpen ? '<button class="btn btn-validate" onclick="continueVoucherRedeem()">Redeem another service</button>' : ""}`;
   } catch (e) {
     btn.disabled = false;
-    btn.innerHTML = "✅ Redeem access voucher";
-    updateVoucherRedeemButton();
+    btn.innerHTML = "✅ Confirm redeem";
     showScanError("Network error: " + e.message);
   }
 }
@@ -923,14 +1100,14 @@ function shouldRetryAlternateCredential(status, json) {
 function continueVoucherRedeem() {
   document.getElementById("step-redeem").classList.add("hidden");
   document.getElementById("step-scan").classList.remove("hidden");
-  document.getElementById("voucher-redeem-btn").disabled = false;
-  document.getElementById("voucher-redeem-btn").innerHTML = "✅ Redeem access voucher";
+  clearVoucherPreview();
+  document.getElementById("voucher-billable").value = "";
   catalogueCache.servicesByLocation = {};
   catalogueCache.servicesByOutlet = {};
   const mode = document.getElementById("voucher-mode").value;
   if (mode === "SERVICE") void onVoucherLocationChange();
   else void onVoucherOutletChange();
-  updateVoucherRedeemButton();
+  updateVoucherPreviewButton();
 }
 
 function showBookingRedeemResult(json) {
@@ -966,6 +1143,7 @@ function showBookingRedeemResult(json) {
 
 function resetAll() {
   currentValidation = null;
+  clearVoucherPreview();
   stopVoucherCamera();
   hideDeepLinkLoading();
   document.getElementById("step-scan").classList.remove("hidden");
@@ -974,6 +1152,7 @@ function resetAll() {
   document.getElementById("scheduled-block").classList.add("hidden");
   document.getElementById("token-input").value = "";
   document.getElementById("voucher-token-input").value = "";
+  document.getElementById("voucher-billable").value = "";
   document.getElementById("outlet-input").value = "";
   hideScanError();
   switchVoucherInput("paste");
