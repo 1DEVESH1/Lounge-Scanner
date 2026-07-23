@@ -12,7 +12,7 @@ const BOOKING_SERVICE_URL = (
   process.env.BOOKING_SERVICE_URL || "http://localhost:5010"
 ).replace(/\/$/, "");
 const PROMOTIONAL_SERVICE_URL = (
-  process.env.PROMOTIONAL_SERVICE_URL || "http://localhost:5000"
+  process.env.PROMOTIONAL_SERVICE_URL || "http://localhost:5000/api/v1/promotional"
 ).replace(/\/$/, "");
 const CATALOGUE_SERVICE_URL = (
   process.env.CATALOGUE_SERVICE_BASE_URL || "http://localhost:8088/api/v1/catalogue"
@@ -204,7 +204,7 @@ app.post("/api/voucher/validate", async (req, res) => {
   try {
     const response = await proxyPost(
       PROMOTIONAL_SERVICE_URL,
-      "/api/v1/internal/program-vouchers/validate",
+      "/internal/program-vouchers/validate",
       {
         ...(qrToken ? { qrToken } : { code }),
         ...(outletId ? { outletId } : {}),
@@ -266,7 +266,7 @@ app.post("/api/voucher/redeem", async (req, res) => {
   try {
     const response = await proxyPost(
       PROMOTIONAL_SERVICE_URL,
-      "/api/v1/internal/program-vouchers/redeem",
+      "/internal/program-vouchers/redeem",
       payload
     );
     return res.status(response.status).json(response.data);
