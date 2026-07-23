@@ -193,7 +193,8 @@ app.post("/api/redeem", async (req, res) => {
  * Body: { qrToken } | { code }
  */
 app.post("/api/voucher/validate", async (req, res) => {
-  const { qrToken, code, outletId, serviceLocationId, locationId } = req.body || {};
+  const { qrToken, code, outletId, serviceLocationId, locationId, billableAmount } =
+    req.body || {};
   if (!qrToken && !code) {
     return res
       .status(400)
@@ -209,6 +210,7 @@ app.post("/api/voucher/validate", async (req, res) => {
         ...(outletId ? { outletId } : {}),
         ...(serviceLocationId ? { serviceLocationId } : {}),
         ...(locationId ? { locationId } : {}),
+        ...(billableAmount != null ? { billableAmount: Number(billableAmount) } : {}),
       }
     );
     return res.status(response.status).json(response.data);
@@ -247,11 +249,18 @@ app.post("/api/voucher/redeem", async (req, res) => {
       error: "outletId (outlet redeem) or locationId (service redeem) is required",
     });
   }
+  if (body.billableAmount == null || Number(body.billableAmount) <= 0) {
+    return res.status(400).json({
+      success: false,
+      error: "billableAmount is required and must be positive",
+    });
+  }
 
   const payload = {
     ...body,
     redemptionChannel: body.redemptionChannel || "QR_SCAN_RP",
     paxAdmitted: Number(body.paxAdmitted || 1),
+    billableAmount: Number(body.billableAmount),
   };
 
   try {
