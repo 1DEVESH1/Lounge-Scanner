@@ -108,43 +108,15 @@ label{font-size:13px;font-weight:500;color:var(--muted);display:block;margin-bot
       <button class="tab-btn active" id="tab-voucher-type" onclick="switchCredentialType('voucher')">Access Voucher</button>
     </div>
 
-    <!-- Access Voucher — Service: Location→Service | Outlet: Outlet+Location→Service -->
+    <!-- Access Voucher — validate first, then outlet → service from program mappings -->
     <div id="voucher-flow">
-      <label for="voucher-mode">Step 1 — Redeem Services/Outlet Services?</label>
-      <select id="voucher-mode" onchange="onVoucherModeChange()">
-        <option value="SERVICE">Service (Location → Service)</option>
-        <option value="OUTLET">Outlet (Outlet + Location → Service)</option>
-      </select>
-
-      <div id="service-mode-fields">
-        <label for="voucher-location">Step 2 — Location</label>
-        <select id="voucher-location" onchange="onVoucherLocationChange()">
-          <option value="">— Loading locations… —</option>
-        </select>
-        <label for="voucher-service">Step 3 — Service</label>
-        <select id="voucher-service" onchange="updateVoucherRedeemButton()" disabled>
-          <option value="">— Select location—</option>
-        </select>
-      </div>
-
-      <div id="outlet-mode-fields" class="hidden">
-        <label for="of-outlet">Step 2 — Outlet</label>
-        <select id="of-outlet" onchange="onVoucherOutletChange()">
-          <option value="">— Loading outlets… —</option>
-        </select>
-        <label for="of-service">Step 3 — Service</label>
-        <select id="of-service" onchange="onVoucherInputsChange()" disabled>
-          <option value="">— Select outlet—</option>
-        </select>
-      </div>
-
-      <label>Step 4 — Voucher code / QR</label>
+      <label>Step 1 — Voucher code / QR</label>
       <div class="scan-toggle" style="margin-top:4px">
         <button type="button" class="tab-btn active" id="tab-voucher-paste" onclick="switchVoucherInput('paste')">📋 Paste</button>
         <button type="button" class="tab-btn" id="tab-voucher-camera" onclick="switchVoucherInput('camera')">📷 Scan QR</button>
       </div>
       <div id="voucher-paste-section">
-        <textarea id="voucher-token-input" placeholder="Paste voucher code or QR token" oninput="onVoucherInputsChange()"></textarea>
+        <textarea id="voucher-token-input" placeholder="Paste voucher code or QR token" oninput="onVoucherCredentialInput()"></textarea>
       </div>
       <div id="voucher-camera-section" class="hidden">
         <div id="voucher-qr-reader"></div>
@@ -152,27 +124,47 @@ label{font-size:13px;font-weight:500;color:var(--muted);display:block;margin-bot
         <button type="button" class="btn btn-secondary" style="margin-top:10px" onclick="stopVoucherCamera()">⏹ Stop Camera</button>
       </div>
 
-      <label for="voucher-pax">Pax admitted</label>
-      <input type="number" id="voucher-pax" min="1" value="1"/>
+      <div id="voucher-loading-block" class="hidden" style="margin-top:12px">
+        <p class="scanning-label" style="margin-top:0">Checking voucher…</p>
+      </div>
 
-      <label for="voucher-billable">Billable amount (₹)</label>
-      <input type="number" id="voucher-billable" min="1" step="0.01" placeholder="Total bill amount" oninput="onVoucherInputsChange()"/>
+      <div id="voucher-status-block" class="hidden" style="margin-top:14px">
+        <div id="voucher-status-badge" style="margin-bottom:10px"></div>
+        <div id="voucher-status-details"></div>
+      </div>
 
-      <button class="btn btn-validate" id="voucher-preview-btn" onclick="previewVoucher()" disabled>
-        🔍 Check voucher &amp; preview
-      </button>
+      <div id="voucher-selection-block" class="hidden">
+        <label for="voucher-outlet">Step 2 — Outlet / location</label>
+        <select id="voucher-outlet" onchange="onVoucherOutletPick()">
+          <option value="">— Select outlet —</option>
+        </select>
 
-      <div id="voucher-preview-block" class="hidden" style="margin-top:14px">
-        <div id="voucher-preview-badge" style="margin-bottom:10px"></div>
-        <div id="voucher-preview-details"></div>
-        <div class="divider"></div>
-        <button class="btn btn-redeem" id="voucher-redeem-btn" onclick="redeemVoucher()" disabled>
-          ✅ Confirm redeem
+        <label for="voucher-service" id="voucher-service-label" class="hidden">Step 3 — Service</label>
+        <div id="voucher-service-block" class="hidden">
+          <select id="voucher-service" onchange="onVoucherServicePick()" disabled>
+            <option value="">— Select outlet first —</option>
+          </select>
+        </div>
+
+        <label for="voucher-billable">Billable amount (₹)</label>
+        <input type="text" inputmode="decimal" id="voucher-billable" placeholder="Enter bill amount" oninput="onVoucherBillableChange()"/>
+
+        <button class="btn btn-validate" id="voucher-preview-btn" onclick="previewVoucher()" disabled>
+          🔍 Preview quote
         </button>
+
+        <div id="voucher-preview-block" class="hidden" style="margin-top:14px">
+          <div id="voucher-preview-badge" style="margin-bottom:10px"></div>
+          <div id="voucher-preview-details"></div>
+          <div class="divider"></div>
+          <button class="btn btn-redeem" id="voucher-redeem-btn" onclick="redeemVoucher()" disabled>
+            ✅ Confirm redeem
+          </button>
+        </div>
       </div>
 
       <p class="hint" id="voucher-redeem-hint">
-        Pehle location/outlet + service select karo. Phir voucher code + billable amount daalo, preview karo, phir redeem karo.
+        Scan or paste the voucher first. Then select outlet and service — single options are auto-selected.
       </p>
     </div>
 
@@ -238,13 +230,14 @@ let voucherHtml5Scanner = null;
 let voucherScannerStarted = false;
 let currentValidation = null; // booking
 let currentVoucherPreview = null;
-let catalogueLoaded = false;
-const catalogueCache = {
-  locations: [],
-  outlets: [],
-  servicesByLocation: {},
-  servicesByOutlet: {},
+let voucherSession = {
+  cred: null,
+  validateData: null,
+  redemptionOptions: null,
+  selectedOutletId: null,
+  selectedServiceLocationId: null,
 };
+let voucherValidateTimer = null;
 
 /** Human voucher codes look like PREFIX-HEX (e.g. AIR-B37B4AC3CE01). */
 function looksLikeVoucherCode(text) {
@@ -324,7 +317,6 @@ function switchCredentialType(type) {
   hideScanError();
   if (isVoucher) {
     stopCamera();
-    void initVoucherCatalogue();
   } else {
     stopVoucherCamera();
     switchVoucherInput("paste");
@@ -379,14 +371,14 @@ function onVoucherQrScanned(decodedText) {
   document.getElementById("voucher-scan-status").textContent = "✅ QR scanned!";
   const cred = classifyCredential(decodedText);
   if (!cred || cred.kind !== "voucher") {
-    showScanError("Is QR se voucher code/token nahi mila. Dobara scan karo ya paste karo.");
+    showScanError("Could not read a voucher code or token from this QR. Scan again or paste manually.");
     switchVoucherInput("paste");
     return;
   }
   hideScanError();
   document.getElementById("voucher-token-input").value = cred.token;
   switchVoucherInput("paste");
-  updateVoucherRedeemButton();
+  void validateVoucherOnly();
 }
 
 function startCamera() {
@@ -426,31 +418,60 @@ async function validatePastedCredential() {
   await routeCredential(text, document.getElementById("outlet-input").value.trim());
 }
 
-function unwrapCatalogue(json) {
+function unwrapApiData(json) {
+  if (json?.body?.data) return json.body.data;
+  if (json?.data && typeof json.data === "object" && !Array.isArray(json.data)) {
+    if (
+      json.data.valid !== undefined ||
+      json.data.voucher ||
+      json.data.redemptionOptions ||
+      json.data.kind
+    ) {
+      return json.data;
+    }
+  }
   return json?.data ?? json;
 }
 
-/** Admin-style: Airport (IATA) · Terminal · Terminal type · Gate type */
-function formatCatalogueLocationLabel(location) {
-  if (!location) return "Unknown location";
-  const airportName = location.airport?.name?.trim() || "Unknown airport";
-  const iata = location.airport?.iataCode?.trim();
-  const airportPart = iata ? `${airportName} (${iata})` : airportName;
-  const terminal =
-    location.terminal?.name?.trim() ||
-    location.terminal?.code?.trim() ||
-    "Terminal —";
-  const terminalType = location.terminalType?.name?.trim() || "Type —";
-  const gateType = location.gateType?.name?.trim() || "Gate —";
-  return `${airportPart} · ${terminal} · ${terminalType} · ${gateType}`;
+function apiErrorMessage(json) {
+  const raw =
+    json?.message ||
+    json?.error ||
+    json?.body?.message ||
+    json?.detail ||
+    json?.data?.message ||
+    (Array.isArray(json?.errors) && json.errors[0]?.message) ||
+    null;
+  if (raw && String(raw).includes("max_pax")) {
+    return (
+      "Promotional service outdated (max_pax column removed). " +
+      "Redeploy the promotional service on dev and restart Lounge-Scanner."
+    );
+  }
+  return raw;
 }
 
-/** Admin-style: OutletName (code) — Airport · Terminal · … */
-function formatOutletWithLocationLabel(outlet) {
-  const outletName = outlet.code
+function formatOutletLabel(outlet) {
+  if (!outlet) return "Unknown outlet";
+  const name = outlet.code
     ? `${outlet.name} (${outlet.code})`
     : outlet.name || outlet.id;
-  return `${outletName} — ${formatCatalogueLocationLabel(outlet.location)}`;
+  if (outlet.locationLabel) return `${name} — ${outlet.locationLabel}`;
+  return name;
+}
+
+function formatServiceLabel(svc) {
+  return svc.displayName || svc.serviceName || "Service";
+}
+
+function setServiceBlockVisible(visible) {
+  document.getElementById("voucher-service-block").classList.toggle("hidden", !visible);
+  document.getElementById("voucher-service-label").classList.toggle("hidden", !visible);
+}
+
+function parseBillableAmount(raw) {
+  const n = Number(String(raw || "").replace(/,/g, "").trim());
+  return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
 function parseVoucherCredential(raw) {
@@ -459,134 +480,259 @@ function parseVoucherCredential(raw) {
   return { token: cred.token, asCode: Boolean(cred.asCode) };
 }
 
-async function initVoucherCatalogue() {
-  if (catalogueLoaded) return;
-  const locationSel = document.getElementById("voucher-location");
-  const outletSel = document.getElementById("of-outlet");
-  locationSel.innerHTML = '<option value="">Loading locations…</option>';
-  outletSel.innerHTML = '<option value="">Loading outlets…</option>';
-  locationSel.disabled = true;
-  outletSel.disabled = true;
+function resetVoucherSession() {
+  voucherSession = {
+    cred: null,
+    validateData: null,
+    redemptionOptions: null,
+    selectedOutletId: null,
+    selectedServiceLocationId: null,
+  };
+  document.getElementById("voucher-loading-block").classList.add("hidden");
+  document.getElementById("voucher-status-block").classList.add("hidden");
+  document.getElementById("voucher-selection-block").classList.add("hidden");
+  document.getElementById("voucher-outlet").innerHTML =
+    '<option value="">— Select outlet —</option>';
+  document.getElementById("voucher-service").innerHTML =
+    '<option value="">— Select outlet first —</option>';
+  document.getElementById("voucher-service").disabled = true;
+  setServiceBlockVisible(false);
+  clearVoucherPreview();
+  updateVoucherPreviewButton();
+}
+
+function getRedeemableOutlets() {
+  const outlets = voucherSession.redemptionOptions?.outlets || [];
+  return outlets.filter((o) =>
+    (o.services || []).some((s) => !s.alreadyRedeemed)
+  );
+}
+
+function getRedeemableServices(outlet) {
+  return (outlet?.services || []).filter((s) => !s.alreadyRedeemed);
+}
+
+function getSelectedOutlet() {
+  const outletId = document.getElementById("voucher-outlet").value;
+  return (voucherSession.redemptionOptions?.outlets || []).find(
+    (o) => o.id === outletId
+  );
+}
+
+function getSelectedService() {
+  const slmId = document.getElementById("voucher-service").value;
+  const outlet = getSelectedOutlet();
+  return (outlet?.services || []).find((s) => s.serviceLocationId === slmId);
+}
+
+function onVoucherCredentialInput() {
+  clearVoucherPreview();
+  if (voucherValidateTimer) clearTimeout(voucherValidateTimer);
+  const raw = document.getElementById("voucher-token-input").value.trim();
+  if (!parseVoucherCredential(raw)) {
+    resetVoucherSession();
+    return;
+  }
+  voucherValidateTimer = setTimeout(() => void validateVoucherOnly(), 450);
+}
+
+async function validateVoucherOnly() {
+  const rawCode = document.getElementById("voucher-token-input").value.trim();
+  const cred = parseVoucherCredential(rawCode);
+  if (!cred) {
+    resetVoucherSession();
+    return;
+  }
+
+  hideScanError();
+  document.getElementById("voucher-loading-block").classList.remove("hidden");
+  document.getElementById("voucher-status-block").classList.add("hidden");
+  document.getElementById("voucher-selection-block").classList.add("hidden");
+  clearVoucherPreview();
+
+  const primary = cred.asCode
+    ? { code: cred.token }
+    : { qrToken: cred.token };
+  const fallback = cred.asCode
+    ? { qrToken: cred.token }
+    : { code: cred.token };
+
   try {
-    const [locRes, outRes] = await Promise.all([
-      fetch("/api/catalogue/locations"),
-      fetch("/api/catalogue/outlets"),
-    ]);
-    const locJson = await locRes.json();
-    const outJson = await outRes.json();
-    if (!locRes.ok) throw new Error(apiErrorMessage(locJson) || "Failed to load locations");
-    if (!outRes.ok) throw new Error(apiErrorMessage(outJson) || "Failed to load outlets");
+    let res = await fetch("/api/voucher/validate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(primary),
+    });
+    let json = await res.json();
 
-    catalogueCache.locations = unwrapCatalogue(locJson) || [];
-    catalogueCache.outlets = unwrapCatalogue(outJson) || [];
-
-    locationSel.innerHTML = '<option value="">— Select location —</option>';
-    for (const loc of catalogueCache.locations) {
-      locationSel.appendChild(
-        new Option(formatCatalogueLocationLabel(loc), loc.id)
-      );
+    if (!res.ok && shouldRetryAlternateCredential(res.status, json)) {
+      res = await fetch("/api/voucher/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fallback),
+      });
+      json = await res.json();
     }
-    locationSel.disabled = false;
 
-    outletSel.innerHTML = '<option value="">— Select outlet —</option>';
-    for (const outlet of catalogueCache.outlets) {
-      outletSel.appendChild(
-        new Option(formatOutletWithLocationLabel(outlet), outlet.id)
-      );
+    document.getElementById("voucher-loading-block").classList.add("hidden");
+
+    if (!res.ok) {
+      resetVoucherSession();
+      voucherSession.cred = cred;
+      showScanError(apiErrorMessage(json) || "Voucher check failed");
+      return;
     }
-    outletSel.disabled = false;
 
-    catalogueLoaded = true;
-    onVoucherModeChange();
+    const data = unwrapApiData(json);
+    voucherSession.cred = cred;
+    voucherSession.validateData = data;
+    voucherSession.redemptionOptions = data.redemptionOptions || { outlets: [] };
+
+    showVoucherStatus(data);
+    if (data.valid) {
+      populateOutletPicker();
+      document.getElementById("voucher-selection-block").classList.remove("hidden");
+      applyAutoSelection();
+    } else {
+      document.getElementById("voucher-selection-block").classList.add("hidden");
+    }
   } catch (e) {
-    locationSel.innerHTML = '<option value="">— Failed to load —</option>';
-    outletSel.innerHTML = '<option value="">— Failed to load —</option>';
-    showScanError("Catalogue load nahi ho paya: " + e.message);
+    document.getElementById("voucher-loading-block").classList.add("hidden");
+    resetVoucherSession();
+    showScanError("Network error: " + e.message);
   }
 }
 
-async function loadServicesForLocation(locationId) {
-  if (catalogueCache.servicesByLocation[locationId]) {
-    return catalogueCache.servicesByLocation[locationId];
-  }
-  const res = await fetch(
-    `/api/catalogue/services?locationId=${encodeURIComponent(locationId)}`
-  );
-  const json = await res.json();
-  if (!res.ok) throw new Error(apiErrorMessage(json) || "Failed to load services");
-  const list = unwrapCatalogue(json) || [];
-  const services = list
-    .filter((s) => Boolean(s.location?.serviceLocationId))
-    .map((s) => ({
-      serviceLocationId: s.location.serviceLocationId,
-      displayName: s.name || s.location?.displayName || "Service",
-      isStandalone: Boolean(s.location?.isStandalone),
-    }));
-  catalogueCache.servicesByLocation[locationId] = services;
-  return services;
+function showVoucherStatus(data) {
+  const block = document.getElementById("voucher-status-block");
+  const badge = document.getElementById("voucher-status-badge");
+  const details = document.getElementById("voucher-status-details");
+  const voucher = data.voucher || {};
+
+  badge.innerHTML = data.valid
+    ? '<span class="status-badge badge-valid"><span class="dot dot-green"></span>VALID</span>'
+    : '<span class="status-badge badge-invalid"><span class="dot dot-red"></span>NOT REDEEMABLE</span>';
+
+  const rows = [
+    ["Voucher", voucher.code || "—"],
+    ["Passenger", voucher.passengerName || "—"],
+    ["Program", voucher.programTitle || voucher.programCode || "—"],
+    ["Restriction", voucher.restriction || "—"],
+    [
+      "Usage",
+      `${voucher.servicesRedeemedCount ?? 0} / ${voucher.servicesRedemptionCap ?? "—"}`,
+    ],
+    ["Valid until", voucher.validUntil ? fmtTime(voucher.validUntil) : "—"],
+  ];
+
+  details.innerHTML = rows
+    .map(
+      ([k, v]) =>
+        `<div class="detail-row"><span class="detail-label">${k}</span><span class="detail-value">${v}</span></div>`
+    )
+    .join("");
+  block.classList.remove("hidden");
 }
 
-async function loadServicesForOutlet(outletId) {
-  if (catalogueCache.servicesByOutlet[outletId]) {
-    return catalogueCache.servicesByOutlet[outletId];
+function populateOutletPicker() {
+  const outletSel = document.getElementById("voucher-outlet");
+  const outlets = voucherSession.redemptionOptions?.outlets || [];
+  const redeemable = getRedeemableOutlets();
+
+  outletSel.innerHTML = "";
+  if (!outlets.length) {
+    outletSel.appendChild(new Option("— No outlets mapped —", ""));
+    outletSel.disabled = true;
+    showScanError("No outlets are configured for this voucher.");
+    return;
   }
-  const res = await fetch(
-    `/api/catalogue/outlets/${encodeURIComponent(outletId)}/services`
-  );
-  const json = await res.json();
-  if (!res.ok) throw new Error(apiErrorMessage(json) || "Failed to load services");
-  const data = unwrapCatalogue(json) || {};
-  const services = data.services || [];
-  catalogueCache.servicesByOutlet[outletId] = services;
-  return services;
+
+  outletSel.appendChild(new Option("— Select outlet —", ""));
+  for (const outlet of outlets) {
+    const hasRedeemable = (outlet.services || []).some((s) => !s.alreadyRedeemed);
+    const label = formatOutletLabel(outlet);
+    const opt = new Option(
+      hasRedeemable ? label : `${label} (all redeemed)`,
+      outlet.id
+    );
+    if (!hasRedeemable) opt.disabled = true;
+    outletSel.appendChild(opt);
+  }
+  outletSel.disabled = redeemable.length === 0;
+  if (!redeemable.length) {
+    showScanError("All mapped services on this voucher have already been redeemed.");
+  }
 }
 
-function resetServicePicker() {
+function applyAutoSelection() {
+  const redeemable = getRedeemableOutlets();
+  if (redeemable.length === 1) {
+    document.getElementById("voucher-outlet").value = redeemable[0].id;
+    onVoucherOutletPick({ auto: true });
+  }
+}
+
+function onVoucherOutletPick({ auto } = {}) {
+  clearVoucherPreview();
+  const outletId = document.getElementById("voucher-outlet").value;
+  voucherSession.selectedOutletId = outletId || null;
+
+  const outlet = getSelectedOutlet();
   const serviceSel = document.getElementById("voucher-service");
-  serviceSel.innerHTML = '<option value="">— Pehle location select karo —</option>';
-  serviceSel.disabled = true;
-}
+  serviceSel.innerHTML = "";
 
-function resetOutletServicePicker() {
-  const ofService = document.getElementById("of-service");
-  ofService.innerHTML = '<option value="">— Pehle outlet select karo —</option>';
-  ofService.disabled = true;
-}
-
-function onVoucherModeChange() {
-  const mode = document.getElementById("voucher-mode").value;
-  document.getElementById("service-mode-fields").classList.toggle("hidden", mode !== "SERVICE");
-  document.getElementById("outlet-mode-fields").classList.toggle("hidden", mode !== "OUTLET");
-  updateVoucherRedeemHint();
-  updateVoucherRedeemButton();
-}
-
-function updateVoucherRedeemHint() {
-  const hint = document.getElementById("voucher-redeem-hint");
-  const mode = document.getElementById("voucher-mode").value;
-  if (mode === "SERVICE") {
-    hint.textContent = "Service flow: Location → Service → Code → Billable → Preview → Redeem.";
-  } else {
-    hint.textContent = "Outlet flow: Outlet → Service → Code → Billable → Preview → Redeem.";
+  if (!outletId || !outlet) {
+    serviceSel.appendChild(new Option("— Select outlet first —", ""));
+    serviceSel.disabled = true;
+    setServiceBlockVisible(false);
+    voucherSession.selectedServiceLocationId = null;
+    updateVoucherPreviewButton();
+    return;
   }
+
+  setServiceBlockVisible(true);
+  const allServices = outlet.services || [];
+  const redeemable = getRedeemableServices(outlet);
+
+  serviceSel.appendChild(new Option("— Select service —", ""));
+  for (const svc of allServices) {
+    const label = svc.alreadyRedeemed
+      ? `${formatServiceLabel(svc)} (already redeemed)`
+      : formatServiceLabel(svc);
+    const opt = new Option(label, svc.serviceLocationId);
+    if (svc.alreadyRedeemed) opt.disabled = true;
+    serviceSel.appendChild(opt);
+  }
+  serviceSel.disabled = redeemable.length === 0;
+
+  if (redeemable.length === 1) {
+    serviceSel.value = redeemable[0].serviceLocationId;
+    onVoucherServicePick();
+  } else {
+    serviceSel.value = "";
+    voucherSession.selectedServiceLocationId = null;
+    updateVoucherPreviewButton();
+  }
+}
+
+function onVoucherServicePick() {
+  clearVoucherPreview();
+  const slmId = document.getElementById("voucher-service").value;
+  voucherSession.selectedServiceLocationId = slmId || null;
+  updateVoucherPreviewButton();
+}
+
+function onVoucherBillableChange() {
+  clearVoucherPreview();
+  updateVoucherPreviewButton();
 }
 
 function getVoucherSelections() {
-  const mode = document.getElementById("voucher-mode").value;
-  if (mode === "OUTLET") {
-    const outletId = document.getElementById("of-outlet").value;
-    const outlet = catalogueCache.outlets.find((o) => o.id === outletId);
-    return {
-      mode,
-      locationId: outlet?.locationId || outlet?.location?.id || undefined,
-      outletId,
-      serviceLocationId: document.getElementById("of-service").value,
-    };
-  }
+  const outletId = document.getElementById("voucher-outlet").value;
+  const outlet = getSelectedOutlet();
   return {
-    mode,
-    locationId: document.getElementById("voucher-location").value,
-    outletId: null,
+    outletId,
+    locationId: outlet?.locationId || outlet?.airportId || undefined,
     serviceLocationId: document.getElementById("voucher-service").value,
   };
 }
@@ -624,89 +770,15 @@ function clearVoucherPreview() {
   redeemBtn.innerHTML = "✅ Confirm redeem";
 }
 
-function onVoucherInputsChange() {
-  clearVoucherPreview();
-  updateVoucherPreviewButton();
-}
-
 function updateVoucherPreviewButton() {
-  const { mode, locationId, outletId, serviceLocationId } = getVoucherSelections();
-  const code = document.getElementById("voucher-token-input").value.trim();
-  const billable = Number(document.getElementById("voucher-billable").value || 0);
-  const ready =
-    billable > 0 &&
-    (mode === "SERVICE"
-      ? Boolean(locationId && serviceLocationId && code)
-      : Boolean(outletId && serviceLocationId && code));
+  const { outletId, serviceLocationId } = getVoucherSelections();
+  const billable = parseBillableAmount(
+    document.getElementById("voucher-billable").value
+  );
+  const ready = Boolean(
+    voucherSession.cred && outletId && serviceLocationId && billable > 0
+  );
   document.getElementById("voucher-preview-btn").disabled = !ready;
-}
-
-function updateVoucherRedeemButton() {
-  onVoucherInputsChange();
-}
-
-async function onVoucherLocationChange() {
-  const locationId = document.getElementById("voucher-location").value;
-  const serviceSel = document.getElementById("voucher-service");
-  const hint = document.getElementById("voucher-redeem-hint");
-  resetServicePicker();
-  if (!locationId) {
-    updateVoucherRedeemButton();
-    return;
-  }
-  try {
-    serviceSel.innerHTML = '<option value="">Loading services…</option>';
-    const services = await loadServicesForLocation(locationId);
-    serviceSel.innerHTML = "";
-    if (!services.length) {
-      serviceSel.innerHTML = '<option value="">— No services found —</option>';
-      hint.textContent = "No services found at this location.";
-      updateVoucherRedeemButton();
-      return;
-    }
-    serviceSel.appendChild(new Option("— Select service —", ""));
-    for (const svc of services) {
-      serviceSel.appendChild(new Option(svc.displayName, svc.serviceLocationId));
-    }
-    serviceSel.disabled = false;
-    hint.textContent = "Service select karo, phir voucher code + billable amount daalo aur preview karo.";
-  } catch (e) {
-    showScanError("Location services load nahi ho paye: " + e.message);
-  }
-  updateVoucherRedeemButton();
-}
-
-async function onVoucherOutletChange() {
-  const outletId = document.getElementById("of-outlet").value;
-  const ofService = document.getElementById("of-service");
-  const hint = document.getElementById("voucher-redeem-hint");
-  resetOutletServicePicker();
-  if (!outletId) {
-    updateVoucherRedeemButton();
-    return;
-  }
-  try {
-    ofService.innerHTML = '<option value="">Loading services…</option>';
-    const services = await loadServicesForOutlet(outletId);
-    ofService.innerHTML = "";
-    if (!services.length) {
-      ofService.innerHTML = '<option value="">— Is outlet par koi service nahi —</option>';
-      hint.textContent = "Is outlet par koi linked service nahi mili.";
-      updateVoucherRedeemButton();
-      return;
-    }
-    ofService.appendChild(new Option("— Select service —", ""));
-    for (const svc of services) {
-      ofService.appendChild(
-        new Option(svc.displayName || svc.serviceName || "Service", svc.serviceLocationId)
-      );
-    }
-    ofService.disabled = false;
-    hint.textContent = "Service select karo, phir voucher code + billable amount daalo aur preview karo.";
-  } catch (e) {
-    showScanError("Outlet services load nahi ho paye: " + e.message);
-  }
-  updateVoucherRedeemButton();
 }
 
 async function routeCredential(raw, pastedOutletId) {
@@ -732,7 +804,7 @@ async function routeCredential(raw, pastedOutletId) {
   switchVoucherInput("paste");
   hideDeepLinkLoading();
   document.getElementById("step-scan").classList.remove("hidden");
-  updateVoucherRedeemButton();
+  void validateVoucherOnly();
 }
 
 async function callBookingValidate(token, outletId) {
@@ -759,16 +831,6 @@ function setValidateLoading(loading) {
   const btn = document.getElementById("validate-btn");
   if (btn) btn.disabled = loading;
   if (btn) btn.innerHTML = loading ? '<span class="spinner"></span>Validating…' : "Validate";
-}
-
-function apiErrorMessage(json) {
-  return (
-    json?.message ||
-    json?.error ||
-    json?.body?.message ||
-    (Array.isArray(json?.errors) && json.errors[0]?.message) ||
-    null
-  );
 }
 
 function showBookingValidationResult(json, token, outletId) {
@@ -877,26 +939,24 @@ async function redeemBooking() {
 async function previewVoucher() {
   hideScanError();
   clearVoucherPreview();
-  const { mode, locationId, outletId, serviceLocationId } = getVoucherSelections();
-  const rawCode = document.getElementById("voucher-token-input").value.trim();
-  const cred = parseVoucherCredential(rawCode);
-  const billableAmount = Number(document.getElementById("voucher-billable").value || 0);
+  const { outletId, locationId, serviceLocationId } = getVoucherSelections();
+  const cred = voucherSession.cred || parseVoucherCredential(
+    document.getElementById("voucher-token-input").value.trim()
+  );
+  const billableAmount = parseBillableAmount(
+    document.getElementById("voucher-billable").value
+  );
 
-  if (mode === "SERVICE") {
-    if (!locationId || !serviceLocationId) {
-      alert("Location aur service select karo.");
-      return;
-    }
-  } else if (!outletId || !serviceLocationId) {
-    alert("Outlet aur service select karo.");
+  if (!outletId || !serviceLocationId) {
+    alert("Select an outlet and service.");
     return;
   }
   if (!cred) {
-    showScanError("Valid voucher code ya QR token paste/scan karo.");
+    showScanError("Enter or scan a valid voucher code or QR token.");
     return;
   }
-  if (!billableAmount || billableAmount <= 0) {
-    showScanError("Valid billable amount daalo.");
+  if (!billableAmount) {
+    showScanError("Enter a valid billable amount.");
     return;
   }
 
@@ -907,8 +967,8 @@ async function previewVoucher() {
   const basePayload = {
     serviceLocationId,
     billableAmount,
+    outletId,
     ...(locationId ? { locationId } : {}),
-    ...(outletId ? { outletId } : {}),
   };
   const primary = cred.asCode
     ? { ...basePayload, code: cred.token }
@@ -937,9 +997,9 @@ async function previewVoucher() {
       return;
     }
 
-    const data = json.data || json;
+    const data = unwrapApiData(json);
     if (!data.valid) {
-      showScanError("Voucher redeemable nahi hai (expired / used / invalid).");
+      showScanError("This voucher cannot be redeemed (expired, fully used, or invalid).");
       return;
     }
     if (data.selectionValidation && data.selectionValidation.isSelectable === false) {
@@ -951,7 +1011,7 @@ async function previewVoucher() {
       return;
     }
     if (!data.quote) {
-      showScanError("Quote generate nahi ho paya. Billable amount aur selection check karo.");
+      showScanError("Could not generate a quote. Check the billable amount and selection.");
       return;
     }
 
@@ -960,7 +1020,6 @@ async function previewVoucher() {
       payload: {
         ...basePayload,
         ...(cred.asCode ? { code: cred.token } : { qrToken: cred.token }),
-        paxAdmitted: Number(document.getElementById("voucher-pax").value || 1),
         redemptionChannel: "QR_SCAN_RP",
       },
       data,
@@ -969,7 +1028,7 @@ async function previewVoucher() {
   } catch (e) {
     showScanError("Network error: " + e.message);
   } finally {
-    btn.innerHTML = "🔍 Check voucher & preview";
+    btn.innerHTML = "🔍 Preview quote";
     updateVoucherPreviewButton();
   }
 }
@@ -989,6 +1048,8 @@ function showVoucherPreview(data) {
     ["Voucher", voucher.code || "—"],
     ["Passenger", voucher.passengerName || "—"],
     ["Program", voucher.programTitle || voucher.programCode || "—"],
+    ["Outlet", formatOutletLabel(getSelectedOutlet())],
+    ["Service", getSelectedService()?.displayName || "—"],
     ["Restriction", voucher.restriction || "—"],
     ["Usage", `${voucher.servicesRedeemedCount ?? 0} / ${voucher.servicesRedemptionCap ?? "—"}`],
     ["Redemption type", redemptionTypeLabel(mapping.redemptionType || quote.redemptionType)],
@@ -1019,7 +1080,7 @@ function showVoucherPreview(data) {
 async function redeemVoucher() {
   hideScanError();
   if (!currentVoucherPreview) {
-    showScanError("Pehle voucher preview karo.");
+    showScanError("Preview the voucher quote before redeeming.");
     return;
   }
 
@@ -1102,12 +1163,7 @@ function continueVoucherRedeem() {
   document.getElementById("step-scan").classList.remove("hidden");
   clearVoucherPreview();
   document.getElementById("voucher-billable").value = "";
-  catalogueCache.servicesByLocation = {};
-  catalogueCache.servicesByOutlet = {};
-  const mode = document.getElementById("voucher-mode").value;
-  if (mode === "SERVICE") void onVoucherLocationChange();
-  else void onVoucherOutletChange();
-  updateVoucherPreviewButton();
+  void validateVoucherOnly();
 }
 
 function showBookingRedeemResult(json) {
@@ -1143,6 +1199,8 @@ function showBookingRedeemResult(json) {
 
 function resetAll() {
   currentValidation = null;
+  if (voucherValidateTimer) clearTimeout(voucherValidateTimer);
+  resetVoucherSession();
   clearVoucherPreview();
   stopVoucherCamera();
   hideDeepLinkLoading();
