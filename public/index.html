@@ -464,6 +464,40 @@ function formatServiceLabel(svc) {
   return svc.displayName || svc.serviceName || "Service";
 }
 
+function getServiceUsageByType(source) {
+  if (!source) return [];
+  if (Array.isArray(source.serviceUsageByType)) return source.serviceUsageByType;
+  return source.redemptionOptions?.serviceUsageByType || [];
+}
+
+function buildServiceUsageRows(source, voucher) {
+  const byType = getServiceUsageByType(source);
+  if (byType.length) {
+    return byType.map((item) => [
+      item.serviceCategoryName || "Service",
+      `${item.usedCount ?? 0} / ${item.totalCount ?? 0}`,
+    ]);
+  }
+  if (voucher) {
+    return [
+      [
+        "Usage",
+        `${voucher.servicesRedeemedCount ?? 0} / ${voucher.servicesRedemptionCap ?? "—"}`,
+      ],
+    ];
+  }
+  return [];
+}
+
+function renderDetailRows(rows) {
+  return rows
+    .map(
+      ([k, v]) =>
+        `<div class="detail-row"><span class="detail-label">${k}</span><span class="detail-value">${v}</span></div>`
+    )
+    .join("");
+}
+
 function setServiceBlockVisible(visible) {
   document.getElementById("voucher-service-block").classList.toggle("hidden", !visible);
   document.getElementById("voucher-service-label").classList.toggle("hidden", !visible);
@@ -617,20 +651,11 @@ function showVoucherStatus(data) {
     ["Voucher", voucher.code || "—"],
     ["Passenger", voucher.passengerName || "—"],
     ["Program", voucher.programTitle || voucher.programCode || "—"],
-    ["Restriction", voucher.restriction || "—"],
-    [
-      "Usage",
-      `${voucher.servicesRedeemedCount ?? 0} / ${voucher.servicesRedemptionCap ?? "—"}`,
-    ],
+    ...buildServiceUsageRows(data, voucher),
     ["Valid until", voucher.validUntil ? fmtTime(voucher.validUntil) : "—"],
   ];
 
-  details.innerHTML = rows
-    .map(
-      ([k, v]) =>
-        `<div class="detail-row"><span class="detail-label">${k}</span><span class="detail-value">${v}</span></div>`
-    )
-    .join("");
+  details.innerHTML = renderDetailRows(rows);
   block.classList.remove("hidden");
 }
 
@@ -1044,33 +1069,38 @@ function showVoucherPreview(data) {
   badge.innerHTML =
     '<span class="status-badge badge-valid"><span class="dot dot-green"></span>READY TO REDEEM</span>';
 
+  const usageSource = {
+    serviceUsageByType: getServiceUsageByType(voucherSession.validateData),
+    redemptionOptions: voucherSession.redemptionOptions,
+  };
+
   const rows = [
     ["Voucher", voucher.code || "—"],
     ["Passenger", voucher.passengerName || "—"],
     ["Program", voucher.programTitle || voucher.programCode || "—"],
     ["Outlet", formatOutletLabel(getSelectedOutlet())],
     ["Service", getSelectedService()?.displayName || "—"],
-    ["Restriction", voucher.restriction || "—"],
-    ["Usage", `${voucher.servicesRedeemedCount ?? 0} / ${voucher.servicesRedemptionCap ?? "—"}`],
+    ...buildServiceUsageRows(usageSource, voucher),
     ["Redemption type", redemptionTypeLabel(mapping.redemptionType || quote.redemptionType)],
-    ["Voucher value (cap)", fmtMoney(mapping.discountAmount ?? quote.voucherValue)],
+  ];
+
+  if (!quote.isFullRedeem) {
+    rows.push(["Voucher value (cap)", fmtMoney(mapping.discountAmount ?? quote.voucherValue)]);
+  }
+
+  rows.push(
     ["Billable amount", fmtMoney(quote.billableAmount)],
     ["Redeem value (voucher applies)", fmtMoney(quote.redeemValue)],
     ["Customer pays", fmtMoney(quote.customerPayAmount)],
-  ];
+  );
 
   details.innerHTML =
-    rows
-      .map(
-        ([k, v]) =>
-          `<div class="detail-row"><span class="detail-label">${k}</span><span class="detail-value">${v}</span></div>`
-      )
-      .join("") +
+    renderDetailRows(rows) +
     `<div class="info-banner" style="margin-top:12px">
       <div class="info-title">Payment summary</div>
       Bill ${fmtMoney(quote.billableAmount)} · Voucher covers ${fmtMoney(quote.redeemValue)} ·
       Customer pays <strong>${fmtMoney(quote.customerPayAmount)}</strong>
-      ${quote.isFullRedeem ? "<br><span style='color:var(--muted)'>Full redeem — guest pays nothing; voucher value is recorded against the bill.</span>" : "<br><span style='color:var(--muted)'>Discounted amount — guest pays the remainder after voucher discount.</span>"}
+      ${quote.isFullRedeem ? "<br><span style='color:var(--muted)'>Full redeem — guest pays nothing; the full billable amount is covered.</span>" : "<br><span style='color:var(--muted)'>Discounted amount — guest pays the remainder after voucher discount.</span>"}
     </div>`;
 
   block.classList.remove("hidden");
@@ -1122,6 +1152,7 @@ async function redeemVoucher() {
     const stillOpen =
       voucher.status === "PARTIALLY_USED" ||
       (Number(voucher.servicesRedeemedCount) < Number(voucher.servicesRedemptionCap));
+    const usageRows = buildServiceUsageRows(data, voucher);
 
     stopVoucherCamera();
     clearVoucherPreview();
@@ -1133,7 +1164,7 @@ async function redeemVoucher() {
         <div class="section-heading">Voucher Redeemed</div>
         <p style="color:var(--muted);font-size:14px;margin-top:6px">${voucher.code || "Access voucher"} · ${voucher.status || ""}</p>
         <div class="divider"></div>
-        <div class="detail-row"><span class="detail-label">Progress</span><span class="detail-value">${voucher.servicesRedeemedCount ?? "—"} / ${voucher.servicesRedemptionCap ?? "—"}</span></div>
+        ${renderDetailRows(usageRows)}
         <div class="detail-row"><span class="detail-label">Billable</span><span class="detail-value">${fmtMoney(quote.billableAmount ?? data.billableAmount)}</span></div>
         <div class="detail-row"><span class="detail-label">Redeem value</span><span class="detail-value">${fmtMoney(quote.redeemValue ?? data.redeemValue)}</span></div>
         <div class="detail-row"><span class="detail-label">Customer paid</span><span class="detail-value">${fmtMoney(quote.customerPayAmount ?? data.customerPayAmount)}</span></div>

@@ -12,7 +12,7 @@ const BOOKING_SERVICE_URL = (
   process.env.BOOKING_SERVICE_URL || "http://localhost:5010"
 ).replace(/\/$/, "");
 const PROMOTIONAL_SERVICE_URL = (
-  process.env.PROMOTIONAL_SERVICE_URL || "http://localhost:5000/api/v1/promotional"
+  process.env.PROMOTIONAL_SERVICE_URL || "http://localhost:8000/api/v1/promotional"
 ).replace(/\/$/, "");
 const CATALOGUE_SERVICE_URL = (
   process.env.CATALOGUE_SERVICE_BASE_URL || "http://localhost:8088/api/v1/catalogue"
