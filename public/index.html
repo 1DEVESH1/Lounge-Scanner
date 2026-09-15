@@ -235,7 +235,7 @@ let voucherSession = {
   validateData: null,
   redemptionOptions: null,
   selectedOutletId: null,
-  selectedServiceLocationId: null,
+  selectedOutletServiceVariantId: null,
 };
 let voucherValidateTimer = null;
 
@@ -520,7 +520,7 @@ function resetVoucherSession() {
     validateData: null,
     redemptionOptions: null,
     selectedOutletId: null,
-    selectedServiceLocationId: null,
+    selectedOutletServiceVariantId: null,
   };
   document.getElementById("voucher-loading-block").classList.add("hidden");
   document.getElementById("voucher-status-block").classList.add("hidden");
@@ -554,9 +554,9 @@ function getSelectedOutlet() {
 }
 
 function getSelectedService() {
-  const slmId = document.getElementById("voucher-service").value;
+  const osvId = document.getElementById("voucher-service").value;
   const outlet = getSelectedOutlet();
-  return (outlet?.services || []).find((s) => s.serviceLocationId === slmId);
+  return (outlet?.services || []).find((s) => s.outletServiceVariantId === osvId);
 }
 
 function onVoucherCredentialInput() {
@@ -710,7 +710,7 @@ function onVoucherOutletPick({ auto } = {}) {
     serviceSel.appendChild(new Option("— Select outlet first —", ""));
     serviceSel.disabled = true;
     setServiceBlockVisible(false);
-    voucherSession.selectedServiceLocationId = null;
+    voucherSession.selectedOutletServiceVariantId = null;
     updateVoucherPreviewButton();
     return;
   }
@@ -724,26 +724,26 @@ function onVoucherOutletPick({ auto } = {}) {
     const label = svc.alreadyRedeemed
       ? `${formatServiceLabel(svc)} (already redeemed)`
       : formatServiceLabel(svc);
-    const opt = new Option(label, svc.serviceLocationId);
+    const opt = new Option(label, svc.outletServiceVariantId);
     if (svc.alreadyRedeemed) opt.disabled = true;
     serviceSel.appendChild(opt);
   }
   serviceSel.disabled = redeemable.length === 0;
 
   if (redeemable.length === 1) {
-    serviceSel.value = redeemable[0].serviceLocationId;
+    serviceSel.value = redeemable[0].outletServiceVariantId;
     onVoucherServicePick();
   } else {
     serviceSel.value = "";
-    voucherSession.selectedServiceLocationId = null;
+    voucherSession.selectedOutletServiceVariantId = null;
     updateVoucherPreviewButton();
   }
 }
 
 function onVoucherServicePick() {
   clearVoucherPreview();
-  const slmId = document.getElementById("voucher-service").value;
-  voucherSession.selectedServiceLocationId = slmId || null;
+  const osvId = document.getElementById("voucher-service").value;
+  voucherSession.selectedOutletServiceVariantId = osvId || null;
   updateVoucherPreviewButton();
 }
 
@@ -753,12 +753,8 @@ function onVoucherBillableChange() {
 }
 
 function getVoucherSelections() {
-  const outletId = document.getElementById("voucher-outlet").value;
-  const outlet = getSelectedOutlet();
   return {
-    outletId,
-    locationId: outlet?.locationId || outlet?.airportId || undefined,
-    serviceLocationId: document.getElementById("voucher-service").value,
+    outletServiceVariantId: document.getElementById("voucher-service").value,
   };
 }
 
@@ -796,12 +792,12 @@ function clearVoucherPreview() {
 }
 
 function updateVoucherPreviewButton() {
-  const { outletId, serviceLocationId } = getVoucherSelections();
+  const { outletServiceVariantId } = getVoucherSelections();
   const billable = parseBillableAmount(
     document.getElementById("voucher-billable").value
   );
   const ready = Boolean(
-    voucherSession.cred && outletId && serviceLocationId && billable > 0
+    voucherSession.cred && outletServiceVariantId && billable > 0
   );
   document.getElementById("voucher-preview-btn").disabled = !ready;
 }
@@ -964,7 +960,7 @@ async function redeemBooking() {
 async function previewVoucher() {
   hideScanError();
   clearVoucherPreview();
-  const { outletId, locationId, serviceLocationId } = getVoucherSelections();
+  const { outletServiceVariantId } = getVoucherSelections();
   const cred = voucherSession.cred || parseVoucherCredential(
     document.getElementById("voucher-token-input").value.trim()
   );
@@ -972,7 +968,7 @@ async function previewVoucher() {
     document.getElementById("voucher-billable").value
   );
 
-  if (!outletId || !serviceLocationId) {
+  if (!outletServiceVariantId) {
     alert("Select an outlet and service.");
     return;
   }
@@ -989,12 +985,7 @@ async function previewVoucher() {
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span>Checking…';
 
-  const basePayload = {
-    serviceLocationId,
-    billableAmount,
-    outletId,
-    ...(locationId ? { locationId } : {}),
-  };
+  const basePayload = { outletServiceVariantId, billableAmount };
   const primary = cred.asCode
     ? { ...basePayload, code: cred.token }
     : { ...basePayload, qrToken: cred.token };
@@ -1085,7 +1076,7 @@ function showVoucherPreview(data) {
   ];
 
   if (!quote.isFullRedeem) {
-    rows.push(["Voucher value (cap)", fmtMoney(mapping.discountAmount ?? quote.voucherValue)]);
+    rows.push(["Customer discount (cap)", fmtMoney(mapping.discountValue ?? quote.discountValue)]);
   }
 
   rows.push(

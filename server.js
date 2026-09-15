@@ -12,10 +12,10 @@ const BOOKING_SERVICE_URL = (
   process.env.BOOKING_SERVICE_URL || "http://localhost:5010"
 ).replace(/\/$/, "");
 const PROMOTIONAL_SERVICE_URL = (
-  process.env.PROMOTIONAL_SERVICE_URL || "http://localhost:8000/api/v1/promotional"
+  process.env.PROMOTIONAL_SERVICE_URL || "http://localhost:8009/api/v1/promotional"
 ).replace(/\/$/, "");
 const CATALOGUE_SERVICE_URL = (
-  process.env.CATALOGUE_SERVICE_BASE_URL || "http://localhost:8088/api/v1/catalogue"
+  process.env.CATALOGUE_SERVICE_BASE_URL || "http://localhost:8089/api/v1/catalogue"
 ).replace(/\/$/, "");
 const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || "";
 
@@ -193,8 +193,7 @@ app.post("/api/redeem", async (req, res) => {
  * Body: { qrToken } | { code }
  */
 app.post("/api/voucher/validate", async (req, res) => {
-  const { qrToken, code, outletId, serviceLocationId, locationId, billableAmount } =
-    req.body || {};
+  const { qrToken, code, outletServiceVariantId, billableAmount } = req.body || {};
   if (!qrToken && !code) {
     return res
       .status(400)
@@ -207,9 +206,7 @@ app.post("/api/voucher/validate", async (req, res) => {
       "/internal/program-vouchers/validate",
       {
         ...(qrToken ? { qrToken } : { code }),
-        ...(outletId ? { outletId } : {}),
-        ...(serviceLocationId ? { serviceLocationId } : {}),
-        ...(locationId ? { locationId } : {}),
+        ...(outletServiceVariantId ? { outletServiceVariantId } : {}),
         ...(billableAmount != null ? { billableAmount: Number(billableAmount) } : {}),
       }
     );
@@ -226,9 +223,8 @@ app.post("/api/voucher/validate", async (req, res) => {
 
 /**
  * POST /api/voucher/redeem — Access Voucher redeem
- * Body: { qrToken|code, serviceLocationId, outletId?, locationId?, paxAdmitted?, ... }
- * Service redeem: locationId + serviceLocationId (no outletId)
- * Outlet redeem: outletId + serviceLocationId
+ * Body: { qrToken|code, outletServiceVariantId, billableAmount, paxAdmitted?, ... }
+ * outletServiceVariantId is the catalogue SKU — it already identifies the outlet.
  */
 app.post("/api/voucher/redeem", async (req, res) => {
   const body = req.body || {};
@@ -237,16 +233,10 @@ app.post("/api/voucher/redeem", async (req, res) => {
       .status(400)
       .json({ success: false, error: "qrToken or code is required" });
   }
-  if (!body.serviceLocationId) {
+  if (!body.outletServiceVariantId) {
     return res.status(400).json({
       success: false,
-      error: "serviceLocationId is required",
-    });
-  }
-  if (!body.outletId && !body.locationId) {
-    return res.status(400).json({
-      success: false,
-      error: "outletId (outlet redeem) or locationId (service redeem) is required",
+      error: "outletServiceVariantId is required",
     });
   }
   if (body.billableAmount == null || Number(body.billableAmount) <= 0) {
