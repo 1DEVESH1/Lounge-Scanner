@@ -270,6 +270,10 @@ app.post("/api/voucher/redeem", async (req, res) => {
   }
 });
 
+app.get("/voucher", (_req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, "voucher.html"));
+});
+
 app.get("*", (_req, res) => {
   res.sendFile(path.join(PUBLIC_DIR, "index.html"));
 });
