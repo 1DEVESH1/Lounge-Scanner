@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>Lounge Scanner</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0e1a;
+  --card:rgba(255,255,255,0.05);
+  --border:rgba(255,255,255,0.1);
+  --accent:#00e5c0;
+  --accent2:#7c6ff7;
+  --red:#ff4d6d;
+  --amber:#ffb830;
+  --green:#00e5c0;
+  --text:#e8eaf6;
+  --muted:rgba(232,234,246,0.5);
+}
+body{font-family:'Outfit',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;
+  background-image:radial-gradient(ellipse at 20% 20%,rgba(124,111,247,0.15) 0%,transparent 60%),
+                   radial-gradient(ellipse at 80% 80%,rgba(0,229,192,0.1) 0%,transparent 60%);
+}
+.app{max-width:480px;margin:0 auto;padding:16px;padding-bottom:40px}
+.header{text-align:center;padding:24px 0 20px}
+.header .logo{font-size:28px;font-weight:700;letter-spacing:-0.5px}
+.header .logo span{color:var(--accent)}
+.header p{color:var(--muted);font-size:14px;margin-top:4px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:20px;padding:20px;margin-bottom:16px;backdrop-filter:blur(10px)}
+.card-title{font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:14px}
+#qr-reader{width:100%;border-radius:12px;overflow:hidden;background:#000}
+#qr-reader video{border-radius:12px}
+.scan-toggle{display:flex;gap:8px;margin-bottom:14px}
+.tab-btn{flex:1;padding:10px;border:1px solid var(--border);background:transparent;color:var(--muted);border-radius:10px;font-family:'Outfit',sans-serif;font-size:13px;font-weight:500;cursor:pointer;transition:all .2s}
+.tab-btn.active{background:rgba(0,229,192,0.15);border-color:var(--accent);color:var(--accent)}
+textarea,select,input[type=text],input[type=number]{width:100%;background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:12px;color:var(--text);font-family:'Outfit',sans-serif;font-size:14px;padding:10px 14px;outline:none;transition:border .2s}
+textarea{resize:vertical;min-height:80px;font-size:13px;border-radius:12px}
+textarea:focus,select:focus,input:focus{border-color:var(--accent)}
+textarea::placeholder,input::placeholder{color:var(--muted)}
+select option{background:#12162a;color:var(--text)}
+label{font-size:13px;font-weight:500;color:var(--muted);display:block;margin-bottom:6px;margin-top:12px}
+.btn{width:100%;padding:14px;border:none;border-radius:12px;font-family:'Outfit',sans-serif;font-size:15px;font-weight:600;cursor:pointer;transition:all .2s;letter-spacing:0.3px;margin-top:14px}
+.btn-validate{background:linear-gradient(135deg,var(--accent2),var(--accent));color:#0a0e1a}
+.btn-validate:hover{opacity:0.9;transform:translateY(-1px)}
+.btn-redeem{background:linear-gradient(135deg,#ff416c,#ff4b2b);color:#fff}
+.btn-redeem:hover{opacity:0.9;transform:translateY(-1px)}
+.btn:disabled{opacity:0.4;cursor:not-allowed;transform:none}
+.btn-secondary{background:rgba(255,255,255,0.06);color:var(--text);border:1px solid var(--border)}
+.btn-secondary:hover{background:rgba(255,255,255,0.1)}
+.status-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;letter-spacing:0.5px;text-transform:uppercase}
+.badge-valid{background:rgba(0,229,192,0.15);color:var(--green);border:1px solid rgba(0,229,192,0.3)}
+.badge-scheduled{background:rgba(255,184,48,0.15);color:var(--amber);border:1px solid rgba(255,184,48,0.3)}
+.badge-invalid{background:rgba(255,77,109,0.15);color:var(--red);border:1px solid rgba(255,77,109,0.3)}
+.badge-redeemed{background:rgba(255,184,48,0.15);color:var(--amber);border:1px solid rgba(255,184,48,0.3)}
+.info-banner{background:rgba(124,111,247,0.12);border:1px solid rgba(124,111,247,0.35);border-radius:12px;padding:14px;font-size:13px;line-height:1.5;color:var(--text)}
+.info-banner strong{color:var(--accent);font-weight:600}
+.info-banner .info-title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--accent2);margin-bottom:6px}
+.detail-row{display:flex;justify-content:space-between;align-items:flex-start;padding:10px 0;border-bottom:1px solid var(--border)}
+.detail-row:last-child{border-bottom:none}
+.detail-label{font-size:12px;color:var(--muted);font-weight:500}
+.detail-value{font-size:14px;font-weight:600;text-align:right;max-width:60%}
+.spinner{width:22px;height:22px;border:3px solid rgba(255,255,255,0.2);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;display:inline-block;vertical-align:middle;margin-right:8px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.hidden{display:none}
+.error-msg{background:rgba(255,77,109,0.1);border:1px solid rgba(255,77,109,0.3);border-radius:10px;padding:12px;font-size:13px;color:var(--red);margin-top:12px;word-break:break-all}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.5}}
+.scanning-label{text-align:center;color:var(--accent);font-size:13px;font-weight:500;margin-top:8px;animation:pulse 1.5s ease-in-out infinite}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:6px}
+.dot-green{background:var(--green)}
+.dot-red{background:var(--red)}
+.dot-amber{background:var(--amber)}
+.section-heading{font-size:16px;font-weight:700;margin-bottom:4px}
+.divider{height:1px;background:var(--border);margin:16px 0}
+.duration-block{background:rgba(0,229,192,0.08);border:1px solid rgba(0,229,192,0.22);border-radius:14px;padding:14px;margin-top:4px}
+.duration-title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--accent);margin-bottom:12px}
+.duration-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.duration-item{background:rgba(255,255,255,0.04);border:1px solid var(--border);border-radius:10px;padding:10px 8px;text-align:center}
+.duration-item.total{background:rgba(124,111,247,0.15);border-color:rgba(124,111,247,0.35)}
+.duration-label{display:block;font-size:10px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px}
+.duration-value{display:block;font-size:16px;font-weight:700;color:var(--text);line-height:1.2}
+.duration-sub{display:block;font-size:10px;color:var(--muted);margin-top:4px}
+.duration-timeline{margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.08)}
+.duration-timeline .detail-row{padding:6px 0}
+.page-nav{display:flex;gap:8px;margin-bottom:16px}
+.page-nav a{flex:1;text-align:center;padding:10px;border:1px solid var(--border);border-radius:10px;color:var(--muted);text-decoration:none;font-size:13px;font-weight:500}
+.page-nav a.active{background:rgba(0,229,192,0.15);border-color:var(--accent);color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="header">
+    <div class="logo">🎟️ Voucher<span>Scanner</span></div>
+    <p>Validate &amp; redeem access vouchers</p>
+  </div>
+
+  <nav class="page-nav">
+    <a href="/">🛂 Lounge Booking</a>
+    <a href="/voucher.html" class="active">🎟️ Access Voucher</a>
+  </nav>
+
+  <div class="card hidden" id="step-loading">
+    <div class="card-title">Loading</div>
+    <p class="scanning-label" style="margin-top:0">Validating QR…</p>
+  </div>
+
+  <div class="card" id="step-scan">
+    <div class="card-title">Redeem Access Voucher</div>
+
+    <!-- Access voucher: validate → outlet → pax → (boarding pass) → redeem -->
+    <div id="voucher-flow">
+      <label>Step 1 — Voucher code / QR</label>
+      <div class="scan-toggle" style="margin-top:4px">
+        <button type="button" class="tab-btn active" id="tab-voucher-paste" onclick="switchVoucherInput('paste')">📋 Paste</button>
+        <button type="button" class="tab-btn" id="tab-voucher-camera" onclick="switchVoucherInput('camera')">📷 Scan QR</button>
+      </div>
+      <div id="voucher-paste-section">
+        <textarea id="voucher-token-input" placeholder="Paste voucher code or QR token" oninput="onVoucherCredentialInput()"></textarea>
+      </div>
+      <div id="voucher-camera-section" class="hidden">
+        <div id="voucher-qr-reader"></div>
+        <p class="scanning-label" id="voucher-scan-status">Point camera at voucher QR…</p>
+        <button type="button" class="btn btn-secondary" style="margin-top:10px" onclick="stopVoucherCamera()">⏹ Stop Camera</button>
+      </div>
+
+      <div id="voucher-loading-block" class="hidden" style="margin-top:12px">
+        <p class="scanning-label" style="margin-top:0">Checking voucher…</p>
+      </div>
+
+      <div id="voucher-status-block" class="hidden" style="margin-top:14px">
+        <div id="voucher-status-badge" style="margin-bottom:10px"></div>
+        <div id="voucher-status-details"></div>
+      </div>
+
+      <div id="voucher-redeem-block" class="hidden">
+        <label for="voucher-outlet">Step 2 — Outlet</label>
+        <select id="voucher-outlet" onchange="onVoucherOutletChange()">
+          <option value="">— Select outlet —</option>
+        </select>
+        <label for="voucher-pax">Pax to admit</label>
+        <input type="number" id="voucher-pax" min="1" value="1" oninput="updateVoucherRedeemButton()"/>
+        <div id="voucher-boarding-pass" class="hidden">
+          <div class="info-banner" style="margin-top:10px">Boarding pass required at this outlet.</div>
+          <label for="voucher-pnr">PNR</label>
+          <input type="text" id="voucher-pnr" placeholder="e.g. AB12CD" oninput="onUppercaseInput(this)"/>
+          <label for="voucher-flight">Flight number</label>
+          <input type="text" id="voucher-flight" placeholder="e.g. AI101" oninput="onUppercaseInput(this)"/>
+        </div>
+        <label for="voucher-bill">Actual bill (₹) — optional</label>
+        <input type="text" inputmode="decimal" id="voucher-bill" placeholder="Optional"/>
+        <button class="btn btn-redeem" id="voucher-redeem-btn" onclick="redeemVoucher()" disabled>
+          ✅ Confirm redeem
+        </button>
+      </div>
+
+    </div>
+
+    <div id="scan-error" class="error-msg hidden"></div>
+  </div>
+
+  <div class="card hidden" id="step-redeem">
+    <div class="card-title">Redemption</div>
+    <div id="redeem-result"></div>
+    <button class="btn btn-secondary" style="margin-top:14px" onclick="resetAll()">🔄 Scan Another</button>
+  </div>
+
+</div>
+
+<script>
+// ===========================================================================
+// State
+// ===========================================================================
+
+const $ = (id) => document.getElementById(id);
+const show = (id) => $(id).classList.remove("hidden");
+const hide = (id) => $(id).classList.add("hidden");
+
+const QR_SCAN_CONFIG = { fps: 10, qrbox: { width: 240, height: 240 } };
+const VALIDATE_DEBOUNCE_MS = 450;
+const REDEEM_VOUCHER_LABEL = "✅ Confirm redeem";
+
+const scanners = {
+  voucher: { elementId: "voucher-qr-reader", instance: null, started: false },
+};
+
+/** credential: the { code } or { qrToken } body the backend accepted; data: validate response. */
+let voucherSession = { credential: null, data: null };
+let voucherValidateTimer = null;
+
+// ===========================================================================
+// Credential parsing
+// ===========================================================================
+
+/** Human voucher codes look like PREFIX-HEX (e.g. AIR-B37B4AC3CE01). */
+function looksLikeVoucherCode(text) {
+  return /^[A-Z0-9][A-Z0-9_-]*-[A-F0-9]{8,}$/i.test(text);
+}
+
+/** Issued qrToken is base64url from 32 random bytes (~43 chars). */
+function looksLikeQrToken(text) {
+  return text.length >= 24 && /^[A-Za-z0-9_-]+$/.test(text) && !looksLikeVoucherCode(text);
+}
+
+/**
+ * Classifies scanned / pasted text.
+ * Returns { kind: "booking", token } | { kind: "voucher", token, asCode } | null.
+ */
+function classifyCredential(raw) {
+  const text = String(raw || "").trim();
+  if (!text) return null;
+  if (text.startsWith("eyJ")) return { kind: "booking", token: text };
+  try {
+    const url = new URL(text);
+    const qrToken = url.searchParams.get("qrToken");
+    const code = url.searchParams.get("code");
+    const token = url.searchParams.get("token");
+    if (qrToken) return { kind: "voucher", token: qrToken, asCode: looksLikeVoucherCode(qrToken) };
+    if (code) return { kind: "voucher", token: code, asCode: true };
+    if (token) {
+      if (token.startsWith("eyJ")) return { kind: "booking", token };
+      return { kind: "voucher", token, asCode: looksLikeVoucherCode(token) || !looksLikeQrToken(token) };
+    }
+  } catch (_) {
+    // Not a URL — fall through to plain-text checks.
+  }
+  if (looksLikeVoucherCode(text)) return { kind: "voucher", token: text, asCode: true };
+  if (looksLikeQrToken(text)) return { kind: "voucher", token: text, asCode: false };
+  if (text.length >= 4) return { kind: "voucher", token: text, asCode: true };
+  return null;
+}
+
+function parseVoucherCredential(raw) {
+  const cred = classifyCredential(raw);
+  return cred && cred.kind === "voucher" ? cred : null;
+}
+
+function stripTokenFromUrl() {
+  if (!window.location.search) return;
+  history.replaceState({}, "", window.location.pathname || "/");
+}
+
+// ===========================================================================
+// API helpers
+// ===========================================================================
+
+async function postJson(url, body) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json();
+  return { ok: res.ok, status: res.status, json };
+}
+
+function unwrapApiData(json) {
+  return json?.body?.data ?? json?.data ?? json;
+}
+
+const ERROR_CODE_MESSAGES = {
+  VOUCHER_NOT_FOUND: "This voucher does not exist. Check the code.",
+  VOUCHER_USED: "This voucher has already been used.",
+  VOUCHER_VOIDED: "This voucher has been cancelled.",
+  VOUCHER_EXPIRED: "This voucher has expired.",
+  VOUCHER_NOT_YET_VALID: "This voucher is not valid yet.",
+  PAX_EXCEEDED: "More pax than this voucher has left.",
+  OUTLET_NOT_ALLOWED: "This voucher cannot be used at this outlet.",
+  SERVICE_NOT_AT_OUTLET: "This service is not available at this outlet for this voucher.",
+  BOARDING_PASS_REQUIRED: "Please capture the boarding pass for this voucher.",
+  INSUFFICIENT_WALLET_BALANCE: "This voucher cannot be used right now. Please contact the program provider.",
+  PROGRAM_INACTIVE: "This program is no longer active.",
+  PROGRAM_CLOSED: "This program has ended.",
+  CLIENT_INACTIVE: "This program is no longer active.",
+};
+
+function apiErrorMessage(json) {
+  const known = json?.errorCode && ERROR_CODE_MESSAGES[json.errorCode];
+  if (known) {
+    const paxLeft = json.data?.paxRemaining;
+    return json.errorCode === "PAX_EXCEEDED" && paxLeft != null ? `${known} (${paxLeft} left)` : known;
+  }
+  return (
+    json?.message ||
+    json?.error ||
+    json?.body?.message ||
+    json?.detail ||
+    json?.data?.message ||
+    (Array.isArray(json?.errors) && json.errors[0]?.message) ||
+    null
+  );
+}
+
+/** True when a code/qrToken miss means we should retry as the other credential type. */
+function shouldRetryAlternateCredential(status, json) {
+  if (json?.errorCode) return json.errorCode === "VOUCHER_NOT_FOUND";
+  if (status === 404) return true;
+  const msg = String(apiErrorMessage(json) || "").toLowerCase();
+  return ["not found", "qrtoken", "must be at least", "validation"].some((s) => msg.includes(s));
+}
+
+/**
+ * POSTs to a voucher endpoint, trying the credential as classified first and
+ * the alternate type (code ⇄ qrToken) if the backend did not recognise it.
+ * Resolves to { ok, status, json, credential } where credential is the body that was used last.
+ */
+async function postVoucherWithFallback(url, cred, extra = {}) {
+  const primary = cred.asCode ? { code: cred.token } : { qrToken: cred.token };
+  const alternate = cred.asCode ? { qrToken: cred.token } : { code: cred.token };
+  let credential = primary;
+  let result = await postJson(url, { ...primary, ...extra });
+  if (!result.ok && shouldRetryAlternateCredential(result.status, result.json)) {
+    credential = alternate;
+    result = await postJson(url, { ...alternate, ...extra });
+  }
+  return { ...result, credential };
+}
+
+// ===========================================================================
+// UI helpers
+// ===========================================================================
+
+function showScanError(msg) {
+  const el = $("scan-error");
+  el.textContent = msg;
+  el.classList.remove("hidden");
+}
+
+function hideScanError() {
+  hide("scan-error");
+}
+
+function setButtonLoading(btn, loading, label, loadingLabel) {
+  btn.disabled = loading;
+  btn.innerHTML = loading ? `<span class="spinner"></span>${loadingLabel}` : label;
+}
+
+function onUppercaseInput(input) {
+  input.value = input.value.toUpperCase();
+  updateVoucherRedeemButton();
+}
+
+function renderDetailRows(rows) {
+  return rows
+    .map(([k, v]) => `<div class="detail-row"><span class="detail-label">${k}</span><span class="detail-value">${v}</span></div>`)
+    .join("");
+}
+
+function badge(cls, dot, label) {
+  return `<span class="status-badge ${cls}"><span class="dot ${dot}"></span>${label}</span>`;
+}
+
+function formatOutletLabel(outlet) {
+  if (!outlet) return "Unknown outlet";
+  const name = outlet.code ? `${outlet.name} (${outlet.code})` : outlet.name || outlet.id;
+  return outlet.locationLabel ? `${name} — ${outlet.locationLabel}` : name;
+}
+
+function joinServiceName(v) {
+  return [v.serviceName, v.variantName].filter(Boolean).join(" — ") || "—";
+}
+
+function parseBillAmount(raw) {
+  const n = Number(String(raw || "").replace(/,/g, "").trim());
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function fmtTime(iso) {
+  try {
+    return (
+      new Date(iso).toLocaleString("en-IN", {
+        timeZone: "Asia/Kolkata",
+        day: "2-digit", month: "short", year: "numeric",
+        hour: "2-digit", minute: "2-digit", hour12: true,
+      }) + " IST"
+    );
+  } catch (_) {
+    return iso;
+  }
+}
+
+const fmtTimeOrDash = (iso) => (iso ? fmtTime(iso) : "—");
+
+// ===========================================================================
+// Navigation / tabs
+// ===========================================================================
+
+function showStep(step) {
+  for (const id of ["step-loading", "step-scan", "step-redeem"]) {
+    $(id).classList.toggle("hidden", id !== step);
+  }
+}
+
+function switchVoucherInput(tab) {
+  $("tab-voucher-paste").classList.toggle("active", tab === "paste");
+  $("tab-voucher-camera").classList.toggle("active", tab === "camera");
+  $("voucher-paste-section").classList.toggle("hidden", tab !== "paste");
+  $("voucher-camera-section").classList.toggle("hidden", tab !== "camera");
+  if (tab === "camera") startVoucherCamera();
+  else stopVoucherCamera();
+}
+
+// ===========================================================================
+// Camera
+// ===========================================================================
+
+function startScanner(key, statusId, readyText, onScan, onError) {
+  const scanner = scanners[key];
+  if (scanner.started) return;
+  scanner.instance = new Html5Qrcode(scanner.elementId);
+  scanner.instance
+    .start({ facingMode: "environment" }, QR_SCAN_CONFIG, onScan, () => {})
+    .then(() => {
+      scanner.started = true;
+      $(statusId).textContent = readyText;
+    })
+    .catch(onError);
+}
+
+function stopScanner(key) {
+  const scanner = scanners[key];
+  if (scanner.instance && scanner.started) {
+    scanner.instance.stop().catch(() => {});
+    scanner.started = false;
+  }
+}
+
+function startVoucherCamera() {
+  if (scanners.voucher.started) return;
+  $("voucher-scan-status").textContent = "Starting camera…";
+  startScanner("voucher", "voucher-scan-status", "Point camera at voucher QR…", onVoucherQrScanned, (err) => {
+    showScanError(`Camera error: ${err}. Use the Paste tab instead.`);
+    switchVoucherInput("paste");
+  });
+}
+
+function stopVoucherCamera() {
+  stopScanner("voucher");
+}
+
+/** Lounge booking QRs (JWT) belong to the lounge page — hand them over. */
+function redirectToBookingScanner(token) {
+  window.location.href = `/?token=${encodeURIComponent(token)}`;
+}
+
+function onVoucherQrScanned(decodedText) {
+  stopVoucherCamera();
+  $("voucher-scan-status").textContent = "✅ QR scanned!";
+  const scanned = classifyCredential(decodedText);
+  if (scanned?.kind === "booking") {
+    redirectToBookingScanner(scanned.token);
+    return;
+  }
+  const cred = parseVoucherCredential(decodedText);
+  if (!cred) {
+    showScanError("Could not read a voucher code or token from this QR. Scan again or paste manually.");
+    switchVoucherInput("paste");
+    return;
+  }
+  hideScanError();
+  $("voucher-token-input").value = cred.token;
+  switchVoucherInput("paste");
+  void validateVoucher();
+}
+
+// ===========================================================================
+// Routing
+// ===========================================================================
+
+function routeCredential(raw) {
+  const cred = classifyCredential(raw);
+  if (!cred) {
+    showStep("step-scan");
+    showScanError("Could not read an access voucher from that QR.");
+    return;
+  }
+  if (cred.kind === "booking") {
+    redirectToBookingScanner(cred.token);
+    return;
+  }
+  stripTokenFromUrl();
+  $("voucher-token-input").value = cred.token;
+  switchVoucherInput("paste");
+  showStep("step-scan");
+  void validateVoucher();
+}
+
+// ===========================================================================
+// Lounge bookings
+// ===========================================================================
+
+// ===========================================================================
+// Access vouchers (one service variant, usable by paxCount people)
+// ===========================================================================
+
+function resetVoucherSession() {
+  voucherSession = { credential: null, data: null };
+  hide("voucher-loading-block");
+  hide("voucher-status-block");
+  hide("voucher-redeem-block");
+}
+
+function onVoucherCredentialInput() {
+  clearTimeout(voucherValidateTimer);
+  if (!parseVoucherCredential($("voucher-token-input").value)) {
+    resetVoucherSession();
+    return;
+  }
+  voucherValidateTimer = setTimeout(() => void validateVoucher(), VALIDATE_DEBOUNCE_MS);
+}
+
+async function validateVoucher() {
+  const cred = parseVoucherCredential($("voucher-token-input").value);
+  if (!cred) {
+    resetVoucherSession();
+    return;
+  }
+
+  hideScanError();
+  show("voucher-loading-block");
+  hide("voucher-status-block");
+
+  try {
+    const { ok, json, credential } = await postVoucherWithFallback("/api/voucher/validate", cred);
+    hide("voucher-loading-block");
+    if (!ok) {
+      resetVoucherSession();
+      showScanError(apiErrorMessage(json) || "Voucher check failed");
+      return;
+    }
+    voucherSession = { credential, data: unwrapApiData(json) };
+    showVoucherStatus(voucherSession.data);
+  } catch (e) {
+    resetVoucherSession();
+    showScanError(`Network error: ${e.message}`);
+  }
+}
+
+function showVoucherStatus(data) {
+  const v = data.voucher || {};
+  const paxLeft = v.paxRemaining ?? 0;
+
+  $("voucher-status-badge").innerHTML = data.valid
+    ? badge("badge-valid", "dot-green", `VALID — ${paxLeft} PAX LEFT`)
+    : badge("badge-invalid", "dot-red", ERROR_CODE_MESSAGES[data.rejectionReason] || "NOT REDEEMABLE");
+  $("voucher-status-details").innerHTML = renderDetailRows([
+    ["Voucher", v.code || "—"],
+    ["Service", joinServiceName(v)],
+    ["Pax", `${v.paxRedeemedCount ?? 0} used / ${v.paxCount ?? 1}`],
+    ["Customer", v.passengerName || "—"],
+    ["Program", v.programTitle || v.programCode || "—"],
+    ["Client", [v.clientName, v.subClientName].filter(Boolean).join(" · ") || "—"],
+    ["Valid until", fmtTimeOrDash(v.validUntil)],
+  ]);
+  show("voucher-status-block");
+
+  if (!data.valid) {
+    hide("voucher-redeem-block");
+    return;
+  }
+
+  const select = $("voucher-outlet");
+  const outlets = data.eligibleOutlets || [];
+  select.innerHTML = "";
+  select.appendChild(new Option(outlets.length ? "— Select outlet —" : "— No outlets available —", ""));
+  for (const o of outlets) select.appendChild(new Option(formatOutletLabel(o), o.id));
+  if (outlets.length === 1) select.value = outlets[0].id;
+
+  const paxInput = $("voucher-pax");
+  paxInput.max = String(paxLeft);
+  paxInput.value = "1";
+  $("voucher-bill").value = "";
+  $("voucher-pnr").value = "";
+  $("voucher-flight").value = "";
+  show("voucher-redeem-block");
+  onVoucherOutletChange();
+}
+
+function selectedVoucherOutlet() {
+  const id = $("voucher-outlet").value;
+  return (voucherSession.data?.eligibleOutlets || []).find((o) => o.id === id) || null;
+}
+
+function onVoucherOutletChange() {
+  $("voucher-boarding-pass").classList.toggle("hidden", !selectedVoucherOutlet()?.requireBoardingPass);
+  updateVoucherRedeemButton();
+}
+
+function updateVoucherRedeemButton() {
+  const outlet = selectedVoucherOutlet();
+  const pax = Number($("voucher-pax").value);
+  const paxLeft = voucherSession.data?.voucher?.paxRemaining || 0;
+  const boardingPassOk =
+    !outlet?.requireBoardingPass || ($("voucher-pnr").value.trim() && $("voucher-flight").value.trim());
+  $("voucher-redeem-btn").disabled = !(outlet && pax >= 1 && pax <= paxLeft && boardingPassOk);
+}
+
+function buildVoucherRedeemPayload() {
+  const outlet = selectedVoucherOutlet();
+  const bill = parseBillAmount($("voucher-bill").value);
+  return {
+    ...voucherSession.credential,
+    outletId: $("voucher-outlet").value,
+    paxToRedeem: Number($("voucher-pax").value) || 1,
+    ...(bill ? { reportedBillAmount: bill } : {}),
+    ...(outlet?.requireBoardingPass
+      ? {
+          boardingPass: {
+            pnr: $("voucher-pnr").value.trim(),
+            flightNumber: $("voucher-flight").value.trim(),
+            captureMethod: "MANUAL",
+          },
+        }
+      : {}),
+  };
+}
+
+async function redeemVoucher() {
+  hideScanError();
+  if (!voucherSession.credential) return;
+  const btn = $("voucher-redeem-btn");
+  setButtonLoading(btn, true, REDEEM_VOUCHER_LABEL, "Redeeming…");
+
+  try {
+    const { ok, json } = await postJson("/api/voucher/redeem", buildVoucherRedeemPayload());
+    if (!ok) {
+      showScanError(apiErrorMessage(json) || "Redeem failed");
+      setButtonLoading(btn, false, REDEEM_VOUCHER_LABEL);
+      updateVoucherRedeemButton();
+      return;
+    }
+    showVoucherRedeemResult(json.data || json);
+  } catch (e) {
+    showScanError(`Network error: ${e.message}`);
+    setButtonLoading(btn, false, REDEEM_VOUCHER_LABEL);
+    updateVoucherRedeemButton();
+  }
+}
+
+function showVoucherRedeemResult(data) {
+  const v = data.voucher || {};
+  const paxLeft = v.paxRemaining ?? 0;
+  stopVoucherCamera();
+  showStep("step-redeem");
+  $("redeem-result").innerHTML = `
+    <div style="text-align:center;padding:20px 0">
+      <div style="font-size:56px;margin-bottom:12px">✅</div>
+      <div class="section-heading">${data.paxAdmitted} pax admitted</div>
+      <p style="color:var(--muted);font-size:14px;margin-top:6px">${v.code || ""} · ${v.status || ""}</p>
+      <div class="divider"></div>
+      ${renderDetailRows([
+        ["Service", joinServiceName(v)],
+        ["Outlet", data.outlet?.name || "—"],
+        ["Pax left", String(paxLeft)],
+        ["Time", fmtTime(data.redeemedAt)],
+      ])}
+    </div>
+    ${paxLeft > 0 ? '<button class="btn btn-validate" onclick="continueVoucherRedeem()">Redeem remaining pax</button>' : ""}`;
+}
+
+function continueVoucherRedeem() {
+  showStep("step-scan");
+  void validateVoucher();
+}
+
+// ===========================================================================
+// Reset / boot
+// ===========================================================================
+
+function resetAll() {
+  clearTimeout(voucherValidateTimer);
+  resetVoucherSession();
+  showStep("step-scan");
+  hideScanError();
+  $("voucher-token-input").value = "";
+  switchVoucherInput("paste");
+}
+
+window.addEventListener("load", () => {
+  const params = new URLSearchParams(window.location.search);
+  const qrToken = params.get("qrToken");
+  const code = params.get("code");
+  const token = params.get("token");
+  if (qrToken || code || token) {
+    showStep("step-loading");
+    // A bare ?code= is wrapped as a URL so it is always treated as a voucher code.
+    const raw = qrToken || (code ? `${window.location.origin}/?code=${encodeURIComponent(code)}` : token);
+    routeCredential(raw);
+    return;
+  }
+  switchVoucherInput("paste");
+});
+</script>
+</body>
+</html>

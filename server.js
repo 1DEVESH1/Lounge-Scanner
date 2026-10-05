@@ -213,6 +213,7 @@ app.post("/api/voucher/redeem", (req, res) => {
 
 // ---- SPA fallback ---------------------------------------------------------
 
+app.get("/voucher", (_req, res) => res.sendFile(path.join(PUBLIC_DIR, "voucher.html")));
 app.get("*", (_req, res) => res.sendFile(path.join(PUBLIC_DIR, "index.html")));
 
 app.listen(config.port, "0.0.0.0", () => {
