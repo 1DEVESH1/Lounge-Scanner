@@ -468,6 +468,7 @@ async function redeemBooking() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        token: currentValidation.token,
         bookingId: currentValidation.bookingId,
         bookingItemId: currentValidation.bookingItemId,
         outletId: currentValidation.outletId,

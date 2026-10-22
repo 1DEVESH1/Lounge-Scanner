@@ -137,9 +137,13 @@ app.post("/api/validate", (req, res) => {
   });
 });
 
-/** POST /api/redeem — Body: { bookingId, bookingItemId, outletId, scannerId?, redeemedBy? } */
+/**
+ * POST /api/redeem — Body: { token, bookingId, bookingItemId, outletId, scannerId?, redeemedBy? }
+ * `token` is the scanned QR JWT; booking-service requires it on redeem (#224).
+ */
 app.post("/api/redeem", (req, res) => {
-  const { bookingId, bookingItemId, outletId, scannerId, redeemedBy } = req.body || {};
+  const { token, bookingId, bookingItemId, outletId, scannerId, redeemedBy } = req.body || {};
+  if (!token) return badRequest(res, "token is required");
   if (!bookingId || !bookingItemId || !outletId) {
     return badRequest(res, "bookingId, bookingItemId and outletId are required");
   }
@@ -154,6 +158,7 @@ app.post("/api/redeem", (req, res) => {
       ...(scannerId ? { scannerId } : {}),
       ...(redeemedBy ? { redeemedBy } : {}),
     },
+    headers: { "X-Lounge-QR-Token": token },
     tag: "redeem",
   });
 });
