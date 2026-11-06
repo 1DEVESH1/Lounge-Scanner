@@ -110,7 +110,7 @@ label{font-size:13px;font-weight:500;color:var(--muted);display:block;margin-bot
   <div class="card" id="step-scan">
     <div class="card-title">Redeem Access Voucher</div>
 
-    <!-- Access voucher: validate → outlet → pax → (boarding pass) → redeem -->
+    <!-- Access voucher: validate → outlet → (boarding pass) → redeem; one guest per redemption -->
     <div id="voucher-flow">
       <label>Step 1 — Voucher code / QR</label>
       <div class="scan-toggle" style="margin-top:4px">
@@ -140,8 +140,6 @@ label{font-size:13px;font-weight:500;color:var(--muted);display:block;margin-bot
         <select id="voucher-outlet" onchange="onVoucherOutletChange()">
           <option value="">— Select outlet —</option>
         </select>
-        <label for="voucher-pax">Pax to admit</label>
-        <input type="number" id="voucher-pax" min="1" value="1" oninput="updateVoucherRedeemButton()"/>
         <div id="voucher-boarding-pass" class="hidden">
           <div class="info-banner" style="margin-top:10px">Boarding pass required at this outlet.</div>
           <label for="voucher-pnr">PNR</label>
@@ -194,9 +192,12 @@ let voucherValidateTimer = null;
 // Credential parsing
 // ===========================================================================
 
-/** Human voucher codes look like PREFIX-HEX (e.g. AIR-B37B4AC3CE01). */
+/**
+ * Human voucher codes: 1 + client code + 8 digits (1SCAP23112321), or the older PREFIX-HEX
+ * (e.g. 1-AIR-REG-001-B37B4AC3CE01).
+ */
 function looksLikeVoucherCode(text) {
-  return /^[A-Z0-9][A-Z0-9_-]*-[A-F0-9]{8,}$/i.test(text);
+  return /^1[A-Z]{4}[0-9]{8}$/i.test(text) || /^[A-Z0-9][A-Z0-9_-]*-[A-F0-9]{8,}$/i.test(text);
 }
 
 /** Issued qrToken is base64url from 32 random bytes (~43 chars). */
@@ -266,7 +267,6 @@ const ERROR_CODE_MESSAGES = {
   VOUCHER_VOIDED: "This voucher has been cancelled.",
   VOUCHER_EXPIRED: "This voucher has expired.",
   VOUCHER_NOT_YET_VALID: "This voucher is not valid yet.",
-  PAX_EXCEEDED: "More pax than this voucher has left.",
   OUTLET_NOT_ALLOWED: "This voucher cannot be used at this outlet.",
   SERVICE_NOT_AT_OUTLET: "This service is not available at this outlet for this voucher.",
   BOARDING_PASS_REQUIRED: "Please capture the boarding pass for this voucher.",
@@ -278,10 +278,7 @@ const ERROR_CODE_MESSAGES = {
 
 function apiErrorMessage(json) {
   const known = json?.errorCode && ERROR_CODE_MESSAGES[json.errorCode];
-  if (known) {
-    const paxLeft = json.data?.paxRemaining;
-    return json.errorCode === "PAX_EXCEEDED" && paxLeft != null ? `${known} (${paxLeft} left)` : known;
-  }
+  if (known) return known;
   return (
     json?.message ||
     json?.error ||
@@ -492,7 +489,7 @@ function routeCredential(raw) {
 // ===========================================================================
 
 // ===========================================================================
-// Access vouchers (one service variant, usable by paxCount people)
+// Access vouchers (one service variant; each redemption admits one guest)
 // ===========================================================================
 
 function resetVoucherSession() {
@@ -540,15 +537,13 @@ async function validateVoucher() {
 
 function showVoucherStatus(data) {
   const v = data.voucher || {};
-  const paxLeft = v.paxRemaining ?? 0;
 
   $("voucher-status-badge").innerHTML = data.valid
-    ? badge("badge-valid", "dot-green", `VALID — ${paxLeft} PAX LEFT`)
+    ? badge("badge-valid", "dot-green", "VALID")
     : badge("badge-invalid", "dot-red", ERROR_CODE_MESSAGES[data.rejectionReason] || "NOT REDEEMABLE");
   $("voucher-status-details").innerHTML = renderDetailRows([
     ["Voucher", v.code || "—"],
     ["Service", joinServiceName(v)],
-    ["Pax", `${v.paxRedeemedCount ?? 0} used / ${v.paxCount ?? 1}`],
     ["Customer", v.passengerName || "—"],
     ["Program", v.programTitle || v.programCode || "—"],
     ["Client", [v.clientName, v.subClientName].filter(Boolean).join(" · ") || "—"],
@@ -568,9 +563,6 @@ function showVoucherStatus(data) {
   for (const o of outlets) select.appendChild(new Option(formatOutletLabel(o), o.id));
   if (outlets.length === 1) select.value = outlets[0].id;
 
-  const paxInput = $("voucher-pax");
-  paxInput.max = String(paxLeft);
-  paxInput.value = "1";
   $("voucher-bill").value = "";
   $("voucher-pnr").value = "";
   $("voucher-flight").value = "";
@@ -590,11 +582,9 @@ function onVoucherOutletChange() {
 
 function updateVoucherRedeemButton() {
   const outlet = selectedVoucherOutlet();
-  const pax = Number($("voucher-pax").value);
-  const paxLeft = voucherSession.data?.voucher?.paxRemaining || 0;
   const boardingPassOk =
     !outlet?.requireBoardingPass || ($("voucher-pnr").value.trim() && $("voucher-flight").value.trim());
-  $("voucher-redeem-btn").disabled = !(outlet && pax >= 1 && pax <= paxLeft && boardingPassOk);
+  $("voucher-redeem-btn").disabled = !(outlet && boardingPassOk);
 }
 
 function buildVoucherRedeemPayload() {
@@ -603,7 +593,6 @@ function buildVoucherRedeemPayload() {
   return {
     ...voucherSession.credential,
     outletId: $("voucher-outlet").value,
-    paxToRedeem: Number($("voucher-pax").value) || 1,
     ...(bill ? { reportedBillAmount: bill } : {}),
     ...(outlet?.requireBoardingPass
       ? {
@@ -641,28 +630,20 @@ async function redeemVoucher() {
 
 function showVoucherRedeemResult(data) {
   const v = data.voucher || {};
-  const paxLeft = v.paxRemaining ?? 0;
   stopVoucherCamera();
   showStep("step-redeem");
   $("redeem-result").innerHTML = `
     <div style="text-align:center;padding:20px 0">
       <div style="font-size:56px;margin-bottom:12px">✅</div>
-      <div class="section-heading">${data.paxAdmitted} pax admitted</div>
+      <div class="section-heading">Guest admitted</div>
       <p style="color:var(--muted);font-size:14px;margin-top:6px">${v.code || ""} · ${v.status || ""}</p>
       <div class="divider"></div>
       ${renderDetailRows([
         ["Service", joinServiceName(v)],
         ["Outlet", data.outlet?.name || "—"],
-        ["Pax left", String(paxLeft)],
         ["Time", fmtTime(data.redeemedAt)],
       ])}
-    </div>
-    ${paxLeft > 0 ? '<button class="btn btn-validate" onclick="continueVoucherRedeem()">Redeem remaining pax</button>' : ""}`;
-}
-
-function continueVoucherRedeem() {
-  showStep("step-scan");
-  void validateVoucher();
+    </div>`;
 }
 
 // ===========================================================================

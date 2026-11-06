@@ -187,7 +187,8 @@ app.post("/api/voucher/validate", (req, res) => {
 
 /**
  * POST /api/voucher/redeem
- * Body: { qrToken | code, outletId | outletServiceVariantId, paxToRedeem?, reportedBillAmount?, boardingPass? }
+ * Body: { qrToken | code, outletId | outletServiceVariantId, reportedBillAmount?, boardingPass? }
+ * Every redemption admits exactly one guest (no pax count is sent).
  * The promotional service enforces the business rules; this proxy only checks the basics.
  */
 app.post("/api/voucher/redeem", (req, res) => {
@@ -206,7 +207,6 @@ app.post("/api/voucher/redeem", (req, res) => {
         ? { outletId: body.outletId }
         : { outletServiceVariantId: body.outletServiceVariantId }),
       redemptionChannel: "QR_SCAN_RP",
-      paxToRedeem: Number(body.paxToRedeem) || 1,
       ...(hasValue(body.reportedBillAmount)
         ? { reportedBillAmount: Number(body.reportedBillAmount) }
         : {}),
