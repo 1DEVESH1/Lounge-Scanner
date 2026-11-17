@@ -193,11 +193,11 @@ let voucherValidateTimer = null;
 // ===========================================================================
 
 /**
- * Human voucher codes: 1 + client code + 8 digits (1SCAP23112321), or the older PREFIX-HEX
- * (e.g. 1-AIR-REG-001-B37B4AC3CE01).
+ * Human voucher codes: 1-<client code>-<11 digits> (1-SCAP-23112321567, hyphens optional when typed),
+ * the 8-digit 1SCAP23112321, or the older PREFIX-HEX (e.g. 1-AIR-REG-001-B37B4AC3CE01).
  */
 function looksLikeVoucherCode(text) {
-  return /^1[A-Z]{4}[0-9]{8}$/i.test(text) || /^[A-Z0-9][A-Z0-9_-]*-[A-F0-9]{8,}$/i.test(text);
+  return /^1-?[A-Z]{4}-?[0-9]{11}$/i.test(text) || /^1[A-Z]{4}[0-9]{8}$/i.test(text) || /^[A-Z0-9][A-Z0-9_-]*-[A-F0-9]{8,}$/i.test(text);
 }
 
 /** Issued qrToken is base64url from 32 random bytes (~43 chars). */
